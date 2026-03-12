@@ -1,5 +1,6 @@
 from .translator import (
     _,
+    collect,
     TransparentTranslator,
     clear_cache,
     get_translator,
@@ -9,6 +10,7 @@ from .translator import (
 
 __all__ = [
     "_",
+    "collect",
     "TransparentTranslator",
     "clear_cache",
     "get_translator",

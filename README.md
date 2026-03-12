@@ -9,11 +9,13 @@ This project is under active development.
 
 Stable today:
 - Module-level `_(...)` translation helper
+- Module-level `collect(...)` helper for runtime string capture
 - `install(locale, locale_dir)` to switch the default translator
 - `TransparentTranslator` for explicit instances
 - TOML-backed translation lookup
 - Babel `fmt.*` placeholder support inside translated templates
 - Per-instance call-site cache with `reload()` and `clear_cache()`
+- Optional runtime collection of missing strings into TOML
 
 Planned:
 - AI-assisted translation generation
@@ -78,6 +80,7 @@ Hoy es 11/3/26
 ```python
 from transparentlation import (
     _,
+    collect,
     TransparentTranslator,
     clear_cache,
     get_translator,
@@ -87,11 +90,38 @@ from transparentlation import (
 ```
 
 - `_(text)` translates the current call site with the default translator.
-- `install(locale_str, locale_dir="locales")` replaces the default translator and returns it.
+- `collect(text)` records a runtime string into the configured collection TOML and returns the original text.
+- `install(locale_str, locale_dir="locales", collect_missing=False, collect_locales=None)` replaces the default translator and returns it.
 - `get_translator()` returns the current default translator instance.
 - `reload()` reloads the active locale file and clears cached call-site entries.
 - `clear_cache()` clears the default translator cache without reloading files.
-- `TransparentTranslator(locale_str, locale_dir="locales")` creates an explicit translator instance with its own cache.
+- `TransparentTranslator(locale_str, locale_dir="locales", collect_missing=False, collect_locales=None)` creates an explicit translator instance with its own cache.
+
+## Runtime Collection
+
+If you want untranslated text to be collected while the program runs, enable `collect_missing`.
+
+```python
+from transparentlation import _, collect, install
+
+install("es", "locales", collect_missing=True, collect_locales=["en", "es", "fr"])
+
+name = "Alice"
+print(_(f"Hello {name}"))
+collect("background worker started")
+```
+
+This writes missing entries directly into each configured translation table:
+
+```toml
+"Hello {name}" = "Hello {name}"
+"background worker started" = "background worker started"
+```
+
+For the example above, the library writes the same placeholder entries into:
+- `locales/en.toml`
+- `locales/es.toml`
+- `locales/fr.toml`
 
 ## How It Works
 
@@ -110,6 +140,8 @@ This is not a drop-in replacement for mature gettext tooling yet.
 
 - The main path is designed for direct `_(f"...")` usage.
 - Translation lookup is currently a flat TOML key-value map.
+- Runtime collection writes flat TOML entries and currently rewrites the file content instead of preserving comments.
+- Runtime collection writes directly into the language TOML files you configure in `collect_locales`.
 - If translated placeholder expressions are invalid or fail at evaluation time, the library falls back to the original rendered text.
 - The library currently relies on runtime frame inspection and AST recovery, so unusual execution environments may behave differently.
 

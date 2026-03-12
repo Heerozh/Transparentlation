@@ -5,7 +5,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 )
 
-from transparentlation import _, clear_cache, get_translator, install, reload
+from transparentlation import _, clear_cache, collect, get_translator, install, reload
 
 
 def test_install_returns_default_translator(tmp_path):
@@ -48,3 +48,20 @@ def test_clear_cache_keeps_current_translations(tmp_path):
     clear_cache()
 
     assert wrapped_call() == "Hola Alice"
+
+
+def test_collect_records_runtime_text(tmp_path):
+    install(
+        "es",
+        str(tmp_path),
+        collect_missing=True,
+        collect_locales=["en", "es"],
+    )
+
+    assert collect("runtime log line") == "runtime log line"
+    assert (tmp_path / "en.toml").read_text(encoding="utf-8") == (
+        '"runtime log line" = "runtime log line"\n'
+    )
+    assert (tmp_path / "es.toml").read_text(encoding="utf-8") == (
+        '"runtime log line" = "runtime log line"\n'
+    )

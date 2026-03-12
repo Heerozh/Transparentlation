@@ -106,3 +106,52 @@ def test_translation_eval_errors_fall_back_to_source_text(tmp_path):
     result = translator.translate(f"Hello {name}")
 
     assert result == "Hello Alice"
+
+
+def test_missing_translation_is_collected_into_toml(tmp_path):
+    translator = TransparentTranslator("es", str(tmp_path), collect_missing=True)
+    name = "Alice"
+
+    result = translator.translate(f"Hello {name}")
+
+    assert result == "Hello Alice"
+    assert (tmp_path / "es.toml").read_text(encoding="utf-8") == (
+        '"Hello {name}" = "Hello {name}"\n'
+    )
+
+
+def test_missing_translation_is_collected_into_all_configured_locales(tmp_path):
+    translator = TransparentTranslator(
+        "es",
+        str(tmp_path),
+        collect_missing=True,
+        collect_locales=["en", "es", "fr"],
+    )
+    name = "Alice"
+
+    assert translator.translate(f"Hello {name}") == "Hello Alice"
+    assert (tmp_path / "en.toml").read_text(encoding="utf-8") == (
+        '"Hello {name}" = "Hello {name}"\n'
+    )
+    assert (tmp_path / "es.toml").read_text(encoding="utf-8") == (
+        '"Hello {name}" = "Hello {name}"\n'
+    )
+    assert (tmp_path / "fr.toml").read_text(encoding="utf-8") == (
+        '"Hello {name}" = "Hello {name}"\n'
+    )
+
+
+def test_collection_keeps_existing_translations(tmp_path):
+    locale_file = tmp_path / "es.toml"
+    locale_file.write_text('"Hello {name}" = "Hola {name}"\n', encoding="utf-8")
+
+    translator = TransparentTranslator("es", str(tmp_path), collect_missing=True)
+    name = "Alice"
+
+    assert translator.translate(f"Hello {name}") == "Hola Alice"
+    assert translator.translate("Untranslated string") == "Untranslated string"
+
+    assert locale_file.read_text(encoding="utf-8") == (
+        '"Hello {name}" = "Hola {name}"\n'
+        '"Untranslated string" = "Untranslated string"\n'
+    )
