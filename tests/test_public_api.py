@@ -51,17 +51,36 @@ def test_clear_cache_keeps_current_translations(tmp_path):
 
 
 def test_collect_records_runtime_text(tmp_path):
+    locale_dir = tmp_path / "locales"
+    locale_dir.mkdir()
     install(
         "es",
-        str(tmp_path),
+        str(locale_dir),
         collect_missing=True,
         collect_locales=["en", "es"],
     )
 
     assert collect("runtime log line") == "runtime log line"
-    assert (tmp_path / "en.toml").read_text(encoding="utf-8") == (
+    assert (locale_dir / "en.toml").read_text(encoding="utf-8") == (
         '"runtime log line" = "runtime log line"\n'
     )
-    assert (tmp_path / "es.toml").read_text(encoding="utf-8") == (
+    assert (locale_dir / "es.toml").read_text(encoding="utf-8") == (
         '"runtime log line" = "runtime log line"\n'
+    )
+    assert (tmp_path / ".locales_cue" / "en.toml").read_text(encoding="utf-8") == (
+        '"runtime log line" = "runtime log line"\n'
+    )
+    assert (tmp_path / ".locales_cue" / "es.toml").read_text(encoding="utf-8") == (
+        '"runtime log line" = "runtime log line"\n'
+    )
+
+
+def test_collect_accepts_explicit_cue(tmp_path):
+    locale_dir = tmp_path / "locales"
+    locale_dir.mkdir()
+    install("es", str(locale_dir), collect_missing=True, collect_locales=["es"])
+
+    assert collect("Hello {name}", cue="Hello Alice") == "Hello {name}"
+    assert (tmp_path / ".locales_cue" / "es.toml").read_text(encoding="utf-8") == (
+        '"Hello {name}" = "Hello Alice"\n'
     )

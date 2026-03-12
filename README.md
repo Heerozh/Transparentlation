@@ -90,7 +90,7 @@ from transparentlation import (
 ```
 
 - `_(text)` translates the current call site with the default translator.
-- `collect(text)` records a runtime string into the configured collection TOML and returns the original text.
+- `collect(text, cue=None)` records a runtime string into the configured collection TOML and returns the original text.
 - `install(locale_str, locale_dir="locales", collect_missing=False, collect_locales=None)` replaces the default translator and returns it.
 - `get_translator()` returns the current default translator instance.
 - `reload()` reloads the active locale file and clears cached call-site entries.
@@ -123,6 +123,48 @@ For the example above, the library writes the same placeholder entries into:
 - `locales/es.toml`
 - `locales/fr.toml`
 
+It also writes the runtime rendered result for each key into parallel cue files:
+- `.locales_cue/en.toml`
+- `.locales_cue/es.toml`
+- `.locales_cue/fr.toml`
+
+Example cue file:
+
+```toml
+"Hello {name}" = "Hello Alice"
+"background worker started" = "background worker started"
+```
+
+## CLI
+
+The project also ships a short developer CLI command: `tt`.
+
+Translate all target locale TOML files from a source locale file through an OpenAI-compatible API:
+
+```bash
+tt translate \
+  --locale-dir locales \
+  --source-locale en \
+  --model gpt-4.1-mini \
+  --api-key "$OPENAI_API_KEY"
+```
+
+By default, the command:
+- reads `locales/en.toml` as the source table
+- discovers every other `*.toml` file under the same directory as a target locale
+- only translates entries that are missing or still equal to the source text
+
+Useful flags:
+- `--target-locales es fr` to restrict which locale files are updated
+- `--overwrite` to force re-translation of existing target values
+- `--dry-run` to preview work without writing files
+- `--base-url` to point at any OpenAI-compatible endpoint
+
+The CLI also reads these environment variables:
+- `TT_API_KEY` or `OPENAI_API_KEY`
+- `TT_BASE_URL` or `OPENAI_BASE_URL`
+- `TT_MODEL` or `OPENAI_MODEL`
+
 ## How It Works
 
 At a high level:
@@ -142,6 +184,7 @@ This is not a drop-in replacement for mature gettext tooling yet.
 - Translation lookup is currently a flat TOML key-value map.
 - Runtime collection writes flat TOML entries and currently rewrites the file content instead of preserving comments.
 - Runtime collection writes directly into the language TOML files you configure in `collect_locales`.
+- Runtime cue collection writes rendered examples into a sibling hidden directory such as `.locales_cue`.
 - If translated placeholder expressions are invalid or fail at evaluation time, the library falls back to the original rendered text.
 - The library currently relies on runtime frame inspection and AST recovery, so unusual execution environments may behave differently.
 

@@ -11,6 +11,9 @@ dependencies = [
     "executing>=2.2.1",
 ]
 
+[project.scripts]
+tt = "transparentlation.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

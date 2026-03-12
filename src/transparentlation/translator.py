@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 import inspect
-import json
 import os
 from dataclasses import dataclass
 from types import CodeType, FrameType
@@ -11,11 +10,7 @@ from typing import Any
 import executing
 from babel import Locale
 from babel.support import Format
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover
-    import tomli as tomllib
+from .toml_io import load_string_table, write_string_table
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,24 +70,34 @@ class TransparentTranslator:
         self._cache.clear()
 
     def get_translation(self, source_template: str) -> str:
+        return self.get_translation_with_cue(source_template, source_template)
+
+    def get_translation_with_cue(self, source_template: str, rendered_text: str) -> str:
         translated = self.translations.get(source_template)
         if isinstance(translated, str):
             return translated
 
-        self.collect(source_template)
+        self.collect(source_template, cue=rendered_text)
         return source_template
 
-    def collect(self, text: str) -> str:
+    def collect(self, text: str, cue: str | None = None) -> str:
         """Persist a runtime string into the configured locale TOML files when enabled."""
         if not self.collect_missing or not text:
             return text
 
+        cue_text = cue if cue is not None else text
         for locale_name in self.collect_locales:
             toml_path = self._locale_file_path(locale_name)
             collected = self._read_translation_file(toml_path)
             if text not in collected:
                 collected[text] = text
                 self._write_translation_file(toml_path, collected)
+
+            cue_path = self._cue_file_path(locale_name)
+            cues = self._read_translation_file(cue_path)
+            if text not in cues:
+                cues[text] = cue_text
+                self._write_translation_file(cue_path, cues)
 
         if self.locale.language in self.collect_locales:
             self.translations[text] = self.translations.get(text, text)
@@ -117,38 +122,19 @@ class TransparentTranslator:
     def _locale_file_path(self, locale_name: str) -> str:
         return os.path.join(self.locale_dir, f"{locale_name}.toml")
 
+    def _cue_dir_path(self) -> str:
+        locale_dir_name = os.path.basename(os.path.normpath(self.locale_dir))
+        parent_dir = os.path.dirname(os.path.normpath(self.locale_dir))
+        return os.path.join(parent_dir, f".{locale_dir_name}_cue")
+
+    def _cue_file_path(self, locale_name: str) -> str:
+        return os.path.join(self._cue_dir_path(), f"{locale_name}.toml")
+
     def _read_translation_file(self, toml_path: str) -> dict[str, str]:
-        if not os.path.exists(toml_path):
-            return {}
-
-        try:
-            with open(toml_path, "rb") as file:
-                data = tomllib.load(file)
-        except OSError:
-            return {}
-        except tomllib.TOMLDecodeError:
-            return {}
-
-        if not isinstance(data, dict):
-            return {}
-
-        return {key: value for key, value in data.items() if isinstance(key, str)}
+        return load_string_table(toml_path)
 
     def _write_translation_file(self, toml_path: str, entries: dict[str, str]) -> None:
-        directory = os.path.dirname(toml_path)
-        if directory:
-            os.makedirs(directory, exist_ok=True)
-
-        lines = [
-            f"{json.dumps(key, ensure_ascii=False)} = {json.dumps(value, ensure_ascii=False)}"
-            for key, value in sorted(entries.items())
-            if isinstance(key, str) and isinstance(value, str)
-        ]
-
-        with open(toml_path, "w", encoding="utf-8", newline="\n") as file:
-            if lines:
-                file.write("\n".join(lines))
-                file.write("\n")
+        write_string_table(toml_path, entries)
 
     def _translate_from_frame(self, text: str, frame: FrameType) -> str:
         cache_key = _make_cache_key(frame)
@@ -170,10 +156,10 @@ class TransparentTranslator:
         template, variables = self._parse_ast_node(node)
 
         if template is None:
-            self.collect(fallback_text)
+            self.collect(fallback_text, cue=fallback_text)
             return None
 
-        translated = self.get_translation(template)
+        translated = self.get_translation_with_cue(template, fallback_text)
         compiled_code = self._compile_foreign_string(translated)
         return CacheEntry(template=template, variables=variables, compiled_code=compiled_code)
 
@@ -255,9 +241,9 @@ def clear_cache() -> None:
     _global_translator.clear_cache()
 
 
-def collect(text: str) -> str:
+def collect(text: str, cue: str | None = None) -> str:
     """Collect a runtime string into the configured TOML file when enabled."""
-    return _global_translator.collect(text)
+    return _global_translator.collect(text, cue=cue)
 
 
 def _(text: str) -> str:
