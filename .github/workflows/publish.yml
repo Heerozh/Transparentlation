@@ -1,0 +1,40 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build and publish distribution 📦 to PyPI
+    runs-on: ubuntu-latest
+    
+    # Environment and permissions are required for trusted publishing
+    environment:
+      name: pypi
+      url: https://pypi.org/p/autolang
+    permissions:
+      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
+      contents: read
+      
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+          
+      - name: Build package
+        run: uv build
+        
+      - name: Publish distribution 📦 to PyPI
+        uses: pypa/gh-action-pypi-publish@release

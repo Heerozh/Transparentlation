@@ -1,15 +1,19 @@
-
+[build-system]
+requires = ["uv_build >= 0.10.7, <0.11.0"]
+build-backend = "uv_build"
 
 [project]
 name = "autolang"
 version = "0.1.0"
-description = "Transparent i18n for Python f-strings with TOML-backed translations."
+description = "Transparent i18n for Python f-strings."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "babel>=2.18.0",
     "executing>=2.2.1",
 ]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
 
 [project.scripts]
 tt = "autolang.cli:main"
