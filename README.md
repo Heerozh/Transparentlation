@@ -103,26 +103,25 @@ tt = translator.translate
 
 The project also ships a short developer CLI command: `tt`.
 
-Translate all target locale TOML files from a source locale file through an OpenAI-compatible API:
+Translate all locale TOML files by filling entries still marked as `NO_TRANSLATION` through an OpenAI-compatible API:
 
 ```bash
 tt translate \
   --locale-dir locales \
-  --source-locale en \
   --model gpt-4.1-mini \
   --api-key "$OPENAI_API_KEY"
 ```
 
 By default, the command:
-- reads `locales/en.toml` as the source table
-- reads `.locales_cue/en.toml` as cue text when available
-- discovers every other `*.toml` file under the same directory as a target locale
-- only translates entries that are missing or still equal to the source text
+- discovers every `*.toml` file under the locale directory as a translation target
+- uses each TOML key as the source template text
+- reads cue text from `.<locale-dir>_cue/*.toml` when available
+- assumes keys may be mixed-language and lets the model decide per item whether translation is needed
+- only translates locale entries whose current value is `NO_TRANSLATION`
 - sends translation requests in batches and can execute multiple batches concurrently
 - validates returned JSON and placeholder compatibility before writing files
 
 Useful flags:
-- `--target-locales es fr` to restrict which locale files are updated
 - `--overwrite` to force re-translation of existing target values
 - `--dry-run` to preview work without writing files
 - `--batch-size 20` to control how many entries are sent in one model request

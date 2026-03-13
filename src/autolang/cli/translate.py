@@ -12,14 +12,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..toml_io import load_string_table, write_string_table
-from .common import locale_display_name, load_source_cues, normalize_language
+from .common import NO_TRANSLATION, list_locale_files, load_shared_cues, locale_display_name, normalize_language
 
 TRANSLATION_SYSTEM_PROMPT = """You are a localization rewrite engine for python template strings with Babel CLDR formatting.
 
 Task:
 Rewrite each source template for the target locale while preserving placeholders.
 Use the source template together with the cue from static analysis.
-The source locale file can contain mixed languages, and the source locale label does not reliably identify the source language.
+Source entries can contain mixed languages.
 For each item, first determine whether it already reads naturally for the target locale. If it already fits the target locale, keep it unchanged.
 If it does not fit the target locale, translate or adapt it for the target locale.
 
@@ -65,11 +65,10 @@ Hard rules:
 6. If the cue strongly indicates date, time, datetime, currency, percent, compact number, or timedelta formatting, you may apply the matching fmt helper.
 7. If the cue includes allowed candidates, stay within those candidates unless the source already uses an allowed fmt helper.
 8. If the cue is weak or ambiguous, keep the placeholder unchanged.
-9. Do not assume the source locale label implies a single source language.
-10. If the text is already appropriate for the target locale, return it unchanged.
-11. Return one item for every input id.
-12. Do not explain your reasoning.
-13. Return JSON only.
+9. If the text is already appropriate for the target locale, return it unchanged.
+10. Return one item for every input id.
+11. Do not explain your reasoning.
+12. Return JSON only.
 """
 
 PLACEHOLDER_PATTERN = re.compile(r"\{([^{}]+)\}")
@@ -107,9 +106,7 @@ class BatchTranslationItem:
 
 @dataclass(frozen=True, slots=True)
 class BatchTranslationRequest:
-    source_locale: str
     target_locale: str
-    source_language: str | None
     target_language: str
     items: tuple[BatchTranslationItem, ...]
 
@@ -215,11 +212,16 @@ class OpenAICompatibleClient:
 
 def handle_translate_command(args: argparse.Namespace) -> int:
     locale_dir = Path(args.locale_dir)
-    source_locale = normalize_language(args.source_locale)
-    source_path = locale_dir / f"{source_locale}.toml"
-    source_entries = load_string_table(str(source_path))
+    locale_files = list_locale_files(locale_dir)
+    if not locale_files:
+        raise SystemExit(f"No locale TOML files found in {locale_dir}.")
+
+    source_entries: dict[str, str] = {}
+    for locale_path in locale_files:
+        for key in load_string_table(str(locale_path)):
+            source_entries[key] = key
     if not source_entries:
-        raise SystemExit(f"Source locale file not found or empty: {source_path}")
+        raise SystemExit(f"No translatable template keys found in {locale_dir}.")
 
     model = args.model or os.environ.get("TT_MODEL") or os.environ.get("OPENAI_MODEL")
     if not model:
@@ -243,11 +245,8 @@ def handle_translate_command(args: argparse.Namespace) -> int:
         timeout=args.timeout,
     )
 
-    target_locales = resolve_target_locales(locale_dir, source_locale, args.target_locales)
-    if not target_locales:
-        raise SystemExit("No target locale TOML files found.")
-
-    source_cues = load_source_cues(locale_dir, source_locale)
+    target_locales = [normalize_language(path.stem) for path in locale_files]
+    source_cues = load_shared_cues(locale_dir)
     target_entries_by_locale: dict[str, dict[str, str]] = {}
     pending_by_locale: dict[str, list[TranslationTask]] = {}
 
@@ -271,8 +270,6 @@ def handle_translate_command(args: argparse.Namespace) -> int:
 
     outcomes = run_translation_batches(
         client=client,
-        source_locale=source_locale,
-        source_language=args.source_language,
         pending_by_locale=pending_by_locale,
         workers=workers,
         batch_size=batch_size,
@@ -308,15 +305,15 @@ def build_translation_tasks(
     target_language = locale_display_name(target_locale)
     tasks: list[TranslationTask] = []
 
-    for key, source_text in source_entries.items():
+    for key in source_entries:
         current_text = current_entries.get(key)
-        if not should_translate_entry(key, source_text, current_text, overwrite):
+        if not should_translate_entry(current_text, overwrite):
             continue
 
         tasks.append(
             TranslationTask(
                 key=key,
-                source_text=source_text,
+                source_text=key,
                 cue_text=source_cues.get(key, ""),
                 target_locale=target_locale,
                 target_language=target_language,
@@ -329,8 +326,6 @@ def build_translation_tasks(
 def run_translation_batches(
     *,
     client: OpenAICompatibleClient,
-    source_locale: str,
-    source_language: str,
     pending_by_locale: dict[str, list[TranslationTask]],
     workers: int,
     batch_size: int,
@@ -349,9 +344,7 @@ def run_translation_batches(
             )
             batch_requests.append(
                 BatchTranslationRequest(
-                    source_locale=source_locale,
                     target_locale=target_locale,
-                    source_language=source_language,
                     target_language=chunk[0].target_language,
                     items=items,
                 )
@@ -406,15 +399,9 @@ def validate_batch_results(
 
 def build_batch_user_prompt(request: BatchTranslationRequest) -> str:
     lines = [
-        f"Source locale file label: {request.source_locale}",
         f"Target language: {request.target_language}",
         f"Target locale: {request.target_locale}",
-        (
-            f"Dominant source language hint: {request.source_language}"
-            if request.source_language
-            else "Dominant source language hint: mixed or unknown"
-        ),
-        "Important: source entries may be mixed-language. Decide per item whether translation is needed.",
+        "Important: source entries come from TOML keys and may be mixed-language. Decide per item whether translation is needed.",
         "",
         "Translate every item below and return one JSON output item for every id.",
         "",
@@ -650,41 +637,11 @@ def normalize_node(node: ast.AST) -> str:
     return ast.dump(node, annotate_fields=True, include_attributes=False)
 
 
-def should_translate_entry(
-    key: str,
-    source_text: str,
-    current_text: str | None,
-    overwrite: bool,
-) -> bool:
+def should_translate_entry(current_text: str | None, overwrite: bool) -> bool:
     if overwrite:
         return True
 
-    if current_text is None:
-        return True
-
-    return current_text == key or current_text == source_text
-
-
-def resolve_target_locales(
-    locale_dir: Path,
-    source_locale: str,
-    explicit_targets: list[str] | None,
-) -> list[str]:
-    if explicit_targets:
-        normalized_targets: list[str] = []
-        for locale in explicit_targets:
-            locale_name = normalize_language(locale)
-            if locale_name != source_locale and locale_name not in normalized_targets:
-                normalized_targets.append(locale_name)
-        return normalized_targets
-
-    discovered = []
-    for path in sorted(locale_dir.glob("*.toml")):
-        locale_name = normalize_language(path.stem)
-        if locale_name != source_locale:
-            discovered.append(locale_name)
-
-    return discovered
+    return current_text == NO_TRANSLATION
 
 
 def chunked(items: list[TranslationTask], size: int) -> list[list[TranslationTask]]:

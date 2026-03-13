@@ -38,13 +38,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Translate locale TOML files through an OpenAI-compatible API.",
     )
     translate_parser.add_argument("--locale-dir", default="locales")
-    translate_parser.add_argument("--source-locale", default="en")
-    translate_parser.add_argument("--target-locales", nargs="*", default=None)
-    translate_parser.add_argument(
-        "--source-language",
-        default=None,
-        help="Optional hint for the dominant source language. Source entries may still be mixed-language.",
-    )
     translate_parser.add_argument("--model", default=None)
     translate_parser.add_argument("--base-url", default=None)
     translate_parser.add_argument("--api-key", default=None)

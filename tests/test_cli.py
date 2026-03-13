@@ -62,8 +62,16 @@ def test_tt_translate_uses_batches_and_cues(monkeypatch, tmp_path):
         '"Goodbye" = "Goodbye"\n',
         encoding="utf-8",
     )
-    (locale_dir / "es.toml").write_text('"Goodbye" = "Adiós"\n', encoding="utf-8")
-    (locale_dir / "fr.toml").write_text("", encoding="utf-8")
+    (locale_dir / "es.toml").write_text(
+        '"Goodbye" = "Adiós"\n'
+        '"Hello {name}" = "NO_TRANSLATION"\n',
+        encoding="utf-8",
+    )
+    (locale_dir / "fr.toml").write_text(
+        '"Goodbye" = "NO_TRANSLATION"\n'
+        '"Hello {name}" = "NO_TRANSLATION"\n',
+        encoding="utf-8",
+    )
     (cue_dir / "en.toml").write_text(
         '"Hello {name}" = "Hello Alice"\n'
         '"Goodbye" = "Goodbye"\n',
@@ -78,8 +86,6 @@ def test_tt_translate_uses_batches_and_cues(monkeypatch, tmp_path):
             "translate",
             "--locale-dir",
             str(locale_dir),
-            "--source-locale",
-            "en",
             "--model",
             "demo-model",
             "--api-key",
@@ -97,6 +103,7 @@ def test_tt_translate_uses_batches_and_cues(monkeypatch, tmp_path):
         request.items[0].cue_text == "Hello Alice"
         for request in FakeBatchClient.recorded_requests
     )
+    assert all(item.source_text != "NO_TRANSLATION" for request in FakeBatchClient.recorded_requests for item in request.items)
     assert load_string_table(str(locale_dir / "es.toml")) == {
         "Goodbye": "Adiós",
         "Hello {name}": "Hola {name}",
@@ -111,7 +118,7 @@ def test_tt_translate_dry_run_does_not_write(monkeypatch, tmp_path):
     locale_dir = tmp_path / "locales"
     locale_dir.mkdir()
     (locale_dir / "en.toml").write_text('"Hello {name}" = "Hello {name}"\n', encoding="utf-8")
-    (locale_dir / "es.toml").write_text("", encoding="utf-8")
+    (locale_dir / "es.toml").write_text('"Hello {name}" = "NO_TRANSLATION"\n', encoding="utf-8")
 
     FakeBatchClient.recorded_requests = []
     monkeypatch.setattr(cli, "OpenAICompatibleClient", FakeBatchClient)
@@ -121,10 +128,6 @@ def test_tt_translate_dry_run_does_not_write(monkeypatch, tmp_path):
             "translate",
             "--locale-dir",
             str(locale_dir),
-            "--source-locale",
-            "en",
-            "--target-locales",
-            "es",
             "--model",
             "demo-model",
             "--api-key",
@@ -134,7 +137,9 @@ def test_tt_translate_dry_run_does_not_write(monkeypatch, tmp_path):
     )
 
     assert exit_code == 0
-    assert load_string_table(str(locale_dir / "es.toml")) == {}
+    assert load_string_table(str(locale_dir / "es.toml")) == {
+        "Hello {name}": "NO_TRANSLATION",
+    }
 
 
 def test_tt_sync_updates_all_locale_files_and_cues(tmp_path):
@@ -306,7 +311,7 @@ def test_tt_translate_rejects_invalid_placeholders(monkeypatch, tmp_path):
     locale_dir = tmp_path / "locales"
     locale_dir.mkdir()
     (locale_dir / "en.toml").write_text('"Hello {name}" = "Hello {name}"\n', encoding="utf-8")
-    (locale_dir / "es.toml").write_text("", encoding="utf-8")
+    (locale_dir / "es.toml").write_text('"Hello {name}" = "NO_TRANSLATION"\n', encoding="utf-8")
 
     monkeypatch.setattr(cli, "OpenAICompatibleClient", InvalidPlaceholderClient)
 
@@ -316,10 +321,6 @@ def test_tt_translate_rejects_invalid_placeholders(monkeypatch, tmp_path):
                 "translate",
                 "--locale-dir",
                 str(locale_dir),
-                "--source-locale",
-                "en",
-                "--target-locales",
-                "es",
                 "--model",
                 "demo-model",
                 "--api-key",
@@ -339,11 +340,9 @@ def test_validate_translated_text_allows_fmt_wrappers():
     )
 
 
-def test_build_batch_user_prompt_treats_source_language_as_optional_hint():
+def test_build_batch_user_prompt_describes_mixed_language_keys():
     request = cli_translate.BatchTranslationRequest(
-        source_locale="en",
         target_locale="es",
-        source_language=None,
         target_language="Spanish",
         items=(
             cli_translate.BatchTranslationItem(
@@ -357,7 +356,5 @@ def test_build_batch_user_prompt_treats_source_language_as_optional_hint():
 
     prompt = cli_translate.build_batch_user_prompt(request)
 
-    assert "Source locale file label: en" in prompt
-    assert "Dominant source language hint: mixed or unknown" in prompt
+    assert "TOML keys" in prompt
     assert "mixed-language" in prompt
-    assert "Source language: English" not in prompt
