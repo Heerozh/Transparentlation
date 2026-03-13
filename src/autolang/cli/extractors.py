@@ -6,12 +6,14 @@ import tokenize
 from collections.abc import Collection, Generator, Mapping
 from typing import Any
 
-from .static_analysis import analyze_static_cues
 from ..source_templates import extract_template_from_call
+from .static_analysis import analyze_static_cues
 
 
 class _TTCallExtractor(ast.NodeVisitor):
-    def __init__(self, keywords: Collection[str], static_cues: dict[tuple[int, str], str]):
+    def __init__(
+        self, keywords: Collection[str], static_cues: dict[tuple[int, str], str]
+    ):
         self.keywords = set(keywords)
         self.static_cues = static_cues
         self.messages: list[tuple[int, str, str, list[str]]] = []
@@ -47,7 +49,9 @@ def extract_tt_python(
 
     static_cues = {
         (item.line, item.template): item.cue_text
-        for item in analyze_static_cues(source, filename=str(options.get("filename") or ""))
+        for item in analyze_static_cues(
+            source, filename=str(options.get("filename") or "")
+        )
     }
     extractor = _TTCallExtractor(keywords or {"tt"}, static_cues)
     extractor.visit(module)

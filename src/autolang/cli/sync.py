@@ -6,7 +6,12 @@ from pathlib import Path
 from babel.messages.extract import extract, extract_from_dir
 
 from ..toml_io import load_string_table, write_string_table
-from .common import NO_TRANSLATION, build_source_cue_path, list_locale_files, should_recurse_into_directory
+from .common import (
+    NO_TRANSLATION,
+    build_source_cue_path,
+    list_locale_files,
+    should_recurse_into_directory,
+)
 
 TT_EXTRACTION_METHOD = "autolang.cli.extractors:extract_tt_python"
 TT_EXTRACTION_KEYWORDS = {"tt": None}

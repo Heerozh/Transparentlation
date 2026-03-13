@@ -12,7 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..toml_io import load_string_table, write_string_table
-from .common import NO_TRANSLATION, list_locale_files, load_shared_cues, locale_display_name, normalize_language
+from .common import (
+    NO_TRANSLATION,
+    list_locale_files,
+    load_shared_cues,
+    locale_display_name,
+    normalize_language,
+)
 
 TRANSLATION_SYSTEM_PROMPT = """You are a localization rewrite engine for python template strings with Babel CLDR formatting.
 
@@ -146,7 +152,9 @@ class OpenAICompatibleClient:
         self.model = model
         self.timeout = timeout
 
-    def translate_batch(self, request: BatchTranslationRequest) -> dict[str, TranslationResult]:
+    def translate_batch(
+        self, request: BatchTranslationRequest
+    ) -> dict[str, TranslationResult]:
         payload = {
             "model": self.model,
             "temperature": 0,
@@ -227,11 +235,19 @@ def handle_translate_command(args: argparse.Namespace) -> int:
     if not model:
         raise SystemExit("Missing model. Pass --model or set TT_MODEL/OPENAI_MODEL.")
 
-    api_key = args.api_key or os.environ.get("TT_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    api_key = (
+        args.api_key or os.environ.get("TT_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    )
     if not api_key:
-        raise SystemExit("Missing API key. Pass --api-key or set TT_API_KEY/OPENAI_API_KEY.")
+        raise SystemExit(
+            "Missing API key. Pass --api-key or set TT_API_KEY/OPENAI_API_KEY."
+        )
 
-    base_url = args.base_url or os.environ.get("TT_BASE_URL") or os.environ.get("OPENAI_BASE_URL")
+    base_url = (
+        args.base_url
+        or os.environ.get("TT_BASE_URL")
+        or os.environ.get("OPENAI_BASE_URL")
+    )
     if not base_url:
         base_url = "https://api.openai.com/v1"
 
@@ -265,7 +281,9 @@ def handle_translate_command(args: argparse.Namespace) -> int:
             pending_by_locale[target_locale] = pending_tasks
 
     if not pending_by_locale:
-        print(f"Updated {len(target_locales)} locale file(s), translated 0 entry/entries.")
+        print(
+            f"Updated {len(target_locales)} locale file(s), translated 0 entry/entries."
+        )
         return 0
 
     outcomes = run_translation_batches(
@@ -288,9 +306,13 @@ def handle_translate_command(args: argparse.Namespace) -> int:
 
     if not args.dry_run:
         for target_locale, target_entries in target_entries_by_locale.items():
-            write_string_table(str(locale_dir / f"{target_locale}.toml"), target_entries)
+            write_string_table(
+                str(locale_dir / f"{target_locale}.toml"), target_entries
+            )
 
-    print(f"Updated {len(target_locales)} locale file(s), translated {total_translated} entry/entries.")
+    print(
+        f"Updated {len(target_locales)} locale file(s), translated {total_translated} entry/entries."
+    )
     return 0
 
 
@@ -353,7 +375,9 @@ def run_translation_batches(
     outcomes: list[BatchTranslationOutcome] = []
     if workers == 1 or len(batch_requests) == 1:
         for batch_request in batch_requests:
-            results = validate_batch_results(batch_request, client.translate_batch(batch_request))
+            results = validate_batch_results(
+                batch_request, client.translate_batch(batch_request)
+            )
             outcomes.append(
                 BatchTranslationOutcome(
                     target_locale=batch_request.target_locale,
@@ -454,9 +478,15 @@ def parse_batch_response(
         if not isinstance(text, str) or not text:
             raise RuntimeError(f"Model response missing translated text: {content}")
         if not isinstance(needs_review, bool):
-            raise RuntimeError(f"Model response needs_review must be boolean: {content}")
-        if not isinstance(issues, list) or not all(isinstance(issue, str) for issue in issues):
-            raise RuntimeError(f"Model response issues must be a list of strings: {content}")
+            raise RuntimeError(
+                f"Model response needs_review must be boolean: {content}"
+            )
+        if not isinstance(issues, list) or not all(
+            isinstance(issue, str) for issue in issues
+        ):
+            raise RuntimeError(
+                f"Model response issues must be a list of strings: {content}"
+            )
 
         validate_translated_text(source_by_id[item_id].source_text, text)
 
@@ -476,7 +506,9 @@ def parse_batch_response(
 
 
 def validate_translated_text(source_text: str, translated_text: str) -> None:
-    source_specs = [build_placeholder_spec(expr) for expr in extract_placeholders(source_text)]
+    source_specs = [
+        build_placeholder_spec(expr) for expr in extract_placeholders(source_text)
+    ]
     translated_exprs = extract_placeholders(translated_text)
 
     if len(source_specs) != len(translated_exprs):
@@ -506,7 +538,9 @@ def find_matching_placeholder_index(
     return None
 
 
-def placeholder_matches(source_spec: PlaceholderSpec, translated_expression: str) -> bool:
+def placeholder_matches(
+    source_spec: PlaceholderSpec, translated_expression: str
+) -> bool:
     translated_node = parse_expression(translated_expression)
     if translated_node is None:
         return False
@@ -521,7 +555,9 @@ def placeholder_matches(source_spec: PlaceholderSpec, translated_expression: str
     if translated_normalized == source_spec.normalized_expression:
         return True
 
-    return is_allowed_wrapper_for_source(source_spec.normalized_expression, translated_node)
+    return is_allowed_wrapper_for_source(
+        source_spec.normalized_expression, translated_node
+    )
 
 
 def build_placeholder_spec(expression: str) -> PlaceholderSpec:
@@ -546,7 +582,16 @@ def is_allowed_wrapper_for_source(source_normalized: str, node: ast.AST) -> bool
     if func_name not in ALLOWED_FMT_FUNCS:
         return False
 
-    if func_name in {"date", "time", "datetime", "decimal", "number", "percent", "timedelta", "compact_decimal"}:
+    if func_name in {
+        "date",
+        "time",
+        "datetime",
+        "decimal",
+        "number",
+        "percent",
+        "timedelta",
+        "compact_decimal",
+    }:
         if len(node.args) != 1:
             return False
     elif func_name == "currency":
@@ -557,13 +602,19 @@ def is_allowed_wrapper_for_source(source_normalized: str, node: ast.AST) -> bool
             return False
 
     if func_name == "percent":
-        return normalize_node(node.args[0]) == source_normalized or is_divided_by_100(node.args[0], source_normalized)
+        return normalize_node(node.args[0]) == source_normalized or is_divided_by_100(
+            node.args[0], source_normalized
+        )
 
     if func_name == "compact_decimal":
-        return normalize_node(node.args[0]) == source_normalized or is_multiplied_compact(node.args[0], source_normalized)
+        return normalize_node(
+            node.args[0]
+        ) == source_normalized or is_multiplied_compact(node.args[0], source_normalized)
 
     if func_name == "compact_currency":
-        return normalize_node(node.args[0]) == source_normalized or is_multiplied_compact(node.args[0], source_normalized)
+        return normalize_node(
+            node.args[0]
+        ) == source_normalized or is_multiplied_compact(node.args[0], source_normalized)
 
     return normalize_node(node.args[0]) == source_normalized
 
@@ -571,7 +622,9 @@ def is_allowed_wrapper_for_source(source_normalized: str, node: ast.AST) -> bool
 def is_divided_by_100(node: ast.AST, source_normalized: str) -> bool:
     if not isinstance(node, ast.BinOp) or not isinstance(node.op, ast.Div):
         return False
-    return normalize_node(node.left) == source_normalized and is_numeric_constant(node.right, 100)
+    return normalize_node(node.left) == source_normalized and is_numeric_constant(
+        node.right, 100
+    )
 
 
 def is_multiplied_compact(node: ast.AST, source_normalized: str) -> bool:

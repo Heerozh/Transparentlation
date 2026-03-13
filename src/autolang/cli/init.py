@@ -4,7 +4,12 @@ import argparse
 from pathlib import Path
 
 from ..toml_io import write_string_table
-from .common import NO_TRANSLATION, build_source_cue_path, list_locale_files, normalize_language
+from .common import (
+    NO_TRANSLATION,
+    build_source_cue_path,
+    list_locale_files,
+    normalize_language,
+)
 from .sync import collect_source_templates
 
 

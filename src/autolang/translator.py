@@ -28,7 +28,7 @@ CacheKey = tuple[str, int, str, int]
 def _make_cache_key(frame: FrameType) -> CacheKey:
     code: CodeType = frame.f_code
     qualified_name = getattr(code, "co_qualname", code.co_name)
-    return (code.co_filename, code.co_firstlineno, qualified_name, frame.f_lasti)
+    return code.co_filename, code.co_firstlineno, qualified_name, frame.f_lasti
 
 
 class TransparentTranslator:
@@ -90,7 +90,9 @@ class TransparentTranslator:
 
         return self._evaluate(entry.compiled_code, frame, text)
 
-    def _build_cache_entry(self, frame: FrameType, fallback_text: str) -> CacheEntry | None:
+    def _build_cache_entry(
+        self, frame: FrameType, fallback_text: str
+    ) -> CacheEntry | None:
         execution = executing.Source.executing(frame)
         node = execution.node
         template, variables = self._parse_ast_node(node)
@@ -100,18 +102,24 @@ class TransparentTranslator:
 
         translated = self.get_translation(template)
         compiled_code = self._compile_foreign_string(translated)
-        return CacheEntry(template=template, variables=variables, compiled_code=compiled_code)
+        return CacheEntry(
+            template=template, variables=variables, compiled_code=compiled_code
+        )
 
-    def _parse_ast_node(self, node: ast.AST | None) -> tuple[str | None, tuple[str, ...]]:
+    @staticmethod
+    def _parse_ast_node(node: ast.AST | None) -> tuple[str | None, tuple[str, ...]]:
         return extract_template_from_call(node)
 
-    def _compile_foreign_string(self, translated: str) -> Any | None:
+    @staticmethod
+    def _compile_foreign_string(translated: str) -> Any | None:
         try:
             return compile(f"f{translated!r}", "<autolang>", "eval")
         except Exception:
             return None
 
-    def _evaluate(self, compiled_code: Any | None, frame: FrameType, fallback: str) -> str:
+    def _evaluate(
+        self, compiled_code: Any | None, frame: FrameType, fallback: str
+    ) -> str:
         if compiled_code is None:
             return fallback
 

@@ -36,7 +36,9 @@ class StaticTemplateCue:
 @dataclass(slots=True)
 class _Scope:
     parent: "_Scope | None" = None
-    definitions: dict[str, list[DefinitionRecord]] = field(default_factory=lambda: defaultdict(list))
+    definitions: dict[str, list[DefinitionRecord]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
 
     def add_definition(self, name: str, record: DefinitionRecord) -> None:
         self.definitions[name].append(record)
@@ -62,21 +64,29 @@ class StaticCueAnalyzer(ast.NodeVisitor):
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._scope.add_definition(
             node.name,
-            DefinitionRecord(kind="function", line=node.lineno, source=f"def {node.name}(...):"),
+            DefinitionRecord(
+                kind="function", line=node.lineno, source=f"def {node.name}(...):"
+            ),
         )
         self._visit_function(node.args, node.body)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._scope.add_definition(
             node.name,
-            DefinitionRecord(kind="async_function", line=node.lineno, source=f"async def {node.name}(...):"),
+            DefinitionRecord(
+                kind="async_function",
+                line=node.lineno,
+                source=f"async def {node.name}(...):",
+            ),
         )
         self._visit_function(node.args, node.body)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self._scope.add_definition(
             node.name,
-            DefinitionRecord(kind="class", line=node.lineno, source=f"class {node.name}:"),
+            DefinitionRecord(
+                kind="class", line=node.lineno, source=f"class {node.name}:"
+            ),
         )
         self._with_child_scope(node.body)
 
@@ -125,7 +135,9 @@ class StaticCueAnalyzer(ast.NodeVisitor):
             node.target,
             node.lineno,
             ast.unparse(node.iter),
-            override_source=f"for {ast.unparse(node.target)} in {ast.unparse(node.iter)}",
+            override_source=(
+                f"for {ast.unparse(node.target)} in {ast.unparse(node.iter)}"
+            ),
             kind="loop_target",
         )
         self._visit_block(node.body)
@@ -142,7 +154,10 @@ class StaticCueAnalyzer(ast.NodeVisitor):
                     item.optional_vars,
                     node.lineno,
                     ast.unparse(item.context_expr),
-                    override_source=f"with {ast.unparse(item.context_expr)} as {ast.unparse(item.optional_vars)}",
+                    override_source=(
+                        f"with {ast.unparse(item.context_expr)} "
+                        f"as {ast.unparse(item.optional_vars)}"
+                    ),
                     kind="with_alias",
                 )
         self._visit_block(node.body)
@@ -155,7 +170,9 @@ class StaticCueAnalyzer(ast.NodeVisitor):
         previous_scope = self._scope
         self._scope = child_scope
         if node.name:
-            exception_type = ast.unparse(node.type) if node.type is not None else "Exception"
+            exception_type = (
+                ast.unparse(node.type) if node.type is not None else "Exception"
+            )
             self._scope.add_definition(
                 node.name,
                 DefinitionRecord(
@@ -181,7 +198,11 @@ class StaticCueAnalyzer(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         template, _variables = extract_template_from_call(node)
-        if template is not None and isinstance(node.func, ast.Name) and node.func.id == "tt":
+        if (
+            template is not None
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "tt"
+        ):
             self.templates.append(
                 StaticTemplateCue(
                     template=template,
@@ -196,7 +217,9 @@ class StaticCueAnalyzer(ast.NodeVisitor):
         previous_scope = self._scope
         self._scope = child_scope
         for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs]:
-            annotation = ast.unparse(arg.annotation) if arg.annotation is not None else None
+            annotation = (
+                ast.unparse(arg.annotation) if arg.annotation is not None else None
+            )
             self._scope.add_definition(
                 arg.arg,
                 DefinitionRecord(
@@ -207,7 +230,11 @@ class StaticCueAnalyzer(ast.NodeVisitor):
                 ),
             )
         if args.vararg is not None:
-            annotation = ast.unparse(args.vararg.annotation) if args.vararg.annotation is not None else None
+            annotation = (
+                ast.unparse(args.vararg.annotation)
+                if args.vararg.annotation is not None
+                else None
+            )
             self._scope.add_definition(
                 args.vararg.arg,
                 DefinitionRecord(
@@ -218,7 +245,11 @@ class StaticCueAnalyzer(ast.NodeVisitor):
                 ),
             )
         if args.kwarg is not None:
-            annotation = ast.unparse(args.kwarg.annotation) if args.kwarg.annotation is not None else None
+            annotation = (
+                ast.unparse(args.kwarg.annotation)
+                if args.kwarg.annotation is not None
+                else None
+            )
             self._scope.add_definition(
                 args.kwarg.arg,
                 DefinitionRecord(
@@ -255,16 +286,24 @@ class StaticCueAnalyzer(ast.NodeVisitor):
         source = override_source
         if source is None:
             target_source = ast.unparse(target)
-            source = f"{target_source} = {value_source}" if value_source is not None else target_source
+            source = (
+                f"{target_source} = {value_source}"
+                if value_source is not None
+                else target_source
+            )
 
         for name in _extract_target_names(target):
             self._scope.add_definition(
                 name,
-                DefinitionRecord(kind=kind, line=line, source=source, annotation=annotation),
+                DefinitionRecord(
+                    kind=kind, line=line, source=source, annotation=annotation
+                ),
             )
 
     def _build_template_cue(self, node: ast.Call, template: str) -> str:
-        location = f"{self.filename}:{node.lineno}" if self.filename else f"line {node.lineno}"
+        location = (
+            f"{self.filename}:{node.lineno}" if self.filename else f"line {node.lineno}"
+        )
         lines = [f"Template: {template}", f"Location: {location}"]
 
         arg = node.args[0] if node.args else None
@@ -287,8 +326,16 @@ class StaticCueAnalyzer(ast.NodeVisitor):
                     "",
                     f"Placeholder: {cue.placeholder}",
                     f"Expression: {cue.expression}",
-                    f"Definition: {cue.definition.source if cue.definition is not None else 'not found in local static scope'}",
-                    f"Annotation: {cue.definition.annotation if cue.definition and cue.definition.annotation else 'unknown'}",
+                    f"Definition: {
+                        cue.definition.source
+                        if cue.definition is not None
+                        else 'not found in local static scope'
+                    }",
+                    f"Annotation: {
+                        cue.definition.annotation
+                        if cue.definition and cue.definition.annotation
+                        else 'unknown'
+                    }",
                     f"Allowed candidates: {', '.join(cue.allowed_candidates)}",
                     f"Recommended: {cue.recommended}",
                     f"Confidence: {cue.confidence}",
@@ -302,14 +349,20 @@ class StaticCueAnalyzer(ast.NodeVisitor):
     def _build_placeholder_cue(self, node: ast.FormattedValue) -> PlaceholderCue:
         placeholder, _nested = render_formatted_value(node)
         expression = ast.unparse(node.value)
-        definition = self._scope.lookup(node.value.id) if isinstance(node.value, ast.Name) else None
-        allowed_candidates, recommended, confidence, notes = suggest_placeholder_candidates(
-            expression=expression,
-            placeholder=placeholder,
-            annotation=definition.annotation if definition is not None else None,
-            definition_source=definition.source if definition is not None else None,
-            has_conversion=node.conversion >= 0,
-            has_format_spec=isinstance(node.format_spec, ast.JoinedStr),
+        definition = (
+            self._scope.lookup(node.value.id)
+            if isinstance(node.value, ast.Name)
+            else None
+        )
+        allowed_candidates, recommended, confidence, notes = (
+            suggest_placeholder_candidates(
+                expression=expression,
+                placeholder=placeholder,
+                annotation=definition.annotation if definition is not None else None,
+                definition_source=definition.source if definition is not None else None,
+                has_conversion=node.conversion >= 0,
+                has_format_spec=isinstance(node.format_spec, ast.JoinedStr),
+            )
         )
         return PlaceholderCue(
             placeholder=placeholder,
@@ -322,7 +375,9 @@ class StaticCueAnalyzer(ast.NodeVisitor):
         )
 
 
-def analyze_static_cues(source: str, *, filename: str | None = None) -> list[StaticTemplateCue]:
+def analyze_static_cues(
+    source: str, *, filename: str | None = None
+) -> list[StaticTemplateCue]:
     module = ast.parse(source)
     analyzer = StaticCueAnalyzer(filename=filename)
     analyzer.visit(module)
@@ -342,35 +397,76 @@ def suggest_placeholder_candidates(
     notes: list[str] = []
 
     if has_conversion:
-        return (base_candidate,), base_candidate, "high", ("Source placeholder already uses an f-string conversion.",)
+        return (
+            (base_candidate,),
+            base_candidate,
+            "high",
+            ("Source placeholder already uses an f-string conversion.",),
+        )
     if has_format_spec:
-        return (base_candidate,), base_candidate, "high", ("Source placeholder already uses an f-string format spec.",)
+        return (
+            (base_candidate,),
+            base_candidate,
+            "high",
+            ("Source placeholder already uses an f-string format spec.",),
+        )
     if _is_fmt_call(expression):
-        return (base_candidate,), base_candidate, "high", ("Source placeholder already calls fmt.*.",)
+        return (
+            (base_candidate,),
+            base_candidate,
+            "high",
+            ("Source placeholder already calls fmt.*.",),
+        )
 
-    kind = _infer_placeholder_kind(annotation=annotation, definition_source=definition_source)
+    kind = _infer_placeholder_kind(
+        annotation=annotation, definition_source=definition_source
+    )
     candidates = _build_greedy_candidates(expression, placeholder, kind=kind)
     recommended = _recommended_candidate(expression, placeholder, kind=kind)
     confidence = "high" if recommended != base_candidate else "low"
 
     if kind == "unknown":
-        notes.append("Candidates are intentionally greedy; only candidates ruled out by exact static information were removed.")
+        notes.append(
+            "Candidates are intentionally greedy; only candidates ruled out by exact "
+            "static information were removed."
+        )
     elif kind == "text":
-        notes.append("Static information identifies this placeholder as text-like, so fmt.* wrappers were pruned.")
+        notes.append(
+            "Static information identifies this placeholder as text-like, "
+            "so fmt.* wrappers were pruned."
+        )
     elif kind == "boolean":
-        notes.append("Static information identifies this placeholder as boolean-like, so fmt.* wrappers were pruned.")
+        notes.append(
+            "Static information identifies this placeholder as boolean-like, "
+            "so fmt.* wrappers were pruned."
+        )
     elif kind == "none":
-        notes.append("Static information identifies this placeholder as None-like, so fmt.* wrappers were pruned.")
+        notes.append(
+            "Static information identifies this placeholder as None-like, "
+            "so fmt.* wrappers were pruned."
+        )
     elif kind == "number":
-        notes.append("Static information identifies this placeholder as numeric, so date/time wrappers were pruned.")
+        notes.append(
+            "Static information identifies this placeholder as numeric, "
+            "so date/time wrappers were pruned."
+        )
     elif kind == "date":
-        notes.append("Static information identifies this placeholder as date-like, so numeric and timedelta wrappers were pruned.")
+        notes.append(
+            "Static information identifies this placeholder as date-like, "
+            "so numeric and timedelta wrappers were pruned."
+        )
     elif kind == "time":
-        notes.append("Static information identifies this placeholder as time-like, so non-time wrappers were pruned.")
+        notes.append(
+            "Static information identifies this placeholder as time-like, "
+            "so non-time wrappers were pruned."
+        )
     elif kind == "datetime":
         notes.append("Static information identifies this placeholder as datetime-like.")
     elif kind == "timedelta":
-        notes.append("Static information identifies this placeholder as timedelta-like, so unrelated wrappers were pruned.")
+        notes.append(
+            "Static information identifies this placeholder as timedelta-like, "
+            "so unrelated wrappers were pruned."
+        )
 
     return candidates, recommended, confidence, tuple(notes)
 
@@ -399,11 +495,17 @@ def _is_fmt_call(expression: str) -> bool:
     )
 
 
-def _infer_placeholder_kind(annotation: str | None, definition_source: str | None) -> str:
+def _infer_placeholder_kind(
+    annotation: str | None, definition_source: str | None
+) -> str:
     annotation_kind = _infer_kind_from_annotation(annotation)
     definition_kind = _infer_kind_from_definition(definition_source)
 
-    if annotation_kind is not None and definition_kind is not None and annotation_kind != definition_kind:
+    if (
+        annotation_kind is not None
+        and definition_kind is not None
+        and annotation_kind != definition_kind
+    ):
         return "unknown"
     if annotation_kind is not None:
         return annotation_kind
@@ -454,7 +556,11 @@ def _infer_kind_from_definition(definition_source: str | None) -> str | None:
         if isinstance(node.value, (int, float, complex)):
             return "number"
 
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)) and isinstance(node.operand, ast.Constant):
+    if (
+        isinstance(node, ast.UnaryOp)
+        and isinstance(node.op, (ast.UAdd, ast.USub))
+        and isinstance(node.operand, ast.Constant)
+    ):
         if isinstance(node.operand.value, (int, float, complex)):
             return "number"
 
@@ -473,11 +579,15 @@ def _kind_from_type_name(type_name: str) -> str | None:
         return "boolean"
     if normalized.endswith(("nonetype", "none")):
         return "none"
-    if normalized.endswith(("int", "float", "decimal", "decimal.decimal", "fraction", "fractions.fraction")):
+    if normalized.endswith(
+        ("int", "float", "decimal", "decimal.decimal", "fraction", "fractions.fraction")
+    ):
         return "number"
     if normalized.endswith(("datetime.datetime", "datetime")):
         return "datetime"
-    if normalized.endswith(("datetime.date", "date")) and not normalized.endswith(("datetime.datetime",)):
+    if normalized.endswith(("datetime.date", "date")) and not normalized.endswith(
+        ("datetime.datetime",)
+    ):
         return "date"
     if normalized.endswith(("datetime.time", "time")):
         return "time"
@@ -486,9 +596,15 @@ def _kind_from_type_name(type_name: str) -> str | None:
     return None
 
 
-def _build_greedy_candidates(expression: str, placeholder: str, *, kind: str) -> tuple[str, ...]:
+def _build_greedy_candidates(
+    expression: str, placeholder: str, *, kind: str
+) -> tuple[str, ...]:
     base = [placeholder]
-    datetime_candidates = [f"{{fmt.date({expression})}}", f"{{fmt.time({expression})}}", f"{{fmt.datetime({expression})}}"]
+    datetime_candidates = [
+        f"{{fmt.date({expression})}}",
+        f"{{fmt.time({expression})}}",
+        f"{{fmt.datetime({expression})}}",
+    ]
     numeric_candidates = [
         f"{{fmt.decimal({expression})}}",
         f"{{fmt.number({expression})}}",

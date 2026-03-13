@@ -2,11 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover
-    import tomli as tomllib
+import tomllib
 
 
 def load_string_table(path: str) -> dict[str, str]:
@@ -24,7 +20,11 @@ def load_string_table(path: str) -> dict[str, str]:
     if not isinstance(data, dict):
         return {}
 
-    return {key: value for key, value in data.items() if isinstance(key, str) and isinstance(value, str)}
+    return {
+        key: value
+        for key, value in data.items()
+        if isinstance(key, str) and isinstance(value, str)
+    }
 
 
 def write_string_table(path: str, entries: dict[str, str]) -> None:
