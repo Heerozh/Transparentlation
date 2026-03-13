@@ -43,39 +43,3 @@ def test_bound_tt_supports_f_string_conversion_and_format_spec(tmp_path):
 
     assert tt(f"Price: {price:.2f}") == "Precio: 12.35"
     assert tt(f"Debug: {obj!r}") == "Depurar: <demo>"
-
-
-def test_collect_records_runtime_text_via_instance(tmp_path):
-    locale_dir = tmp_path / "locales"
-    locale_dir.mkdir()
-    translator = install(
-        "es",
-        str(locale_dir),
-        collect_missing=True,
-        collect_locales=["en", "es"],
-    )
-
-    assert translator.collect("runtime log line") == "runtime log line"
-    assert (locale_dir / "en.toml").read_text(encoding="utf-8") == (
-        '"runtime log line" = "runtime log line"\n'
-    )
-    assert (locale_dir / "es.toml").read_text(encoding="utf-8") == (
-        '"runtime log line" = "runtime log line"\n'
-    )
-    assert (tmp_path / ".locales_cue" / "en.toml").read_text(encoding="utf-8") == (
-        '"runtime log line" = "runtime log line"\n'
-    )
-    assert (tmp_path / ".locales_cue" / "es.toml").read_text(encoding="utf-8") == (
-        '"runtime log line" = "runtime log line"\n'
-    )
-
-
-def test_collect_accepts_explicit_cue(tmp_path):
-    locale_dir = tmp_path / "locales"
-    locale_dir.mkdir()
-    translator = install("es", str(locale_dir), collect_missing=True, collect_locales=["es"])
-
-    assert translator.collect("Hello {name}", cue="Hello Alice") == "Hello {name}"
-    assert (tmp_path / ".locales_cue" / "es.toml").read_text(encoding="utf-8") == (
-        '"Hello {name}" = "Hello Alice"\n'
-    )

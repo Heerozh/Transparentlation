@@ -93,7 +93,7 @@ def test_tt_translate_uses_batches_and_cues(monkeypatch, tmp_path):
     assert exit_code == 0
     assert len(FakeBatchClient.recorded_requests) == 3
     assert any(
-        request.items[0].rendered_example == "Hello Alice"
+        request.items[0].cue_text == "Hello Alice"
         for request in FakeBatchClient.recorded_requests
     )
     assert load_string_table(str(locale_dir / "es.toml")) == {
@@ -134,6 +134,82 @@ def test_tt_translate_dry_run_does_not_write(monkeypatch, tmp_path):
 
     assert exit_code == 0
     assert load_string_table(str(locale_dir / "es.toml")) == {}
+
+
+def test_tt_collect_extracts_tt_fstrings_into_source_locale_and_cues(tmp_path):
+    source_dir = tmp_path / "src"
+    locale_dir = tmp_path / "locales"
+    source_dir.mkdir()
+    locale_dir.mkdir()
+    (source_dir / "app.py").write_text(
+        "name = 'Alice'\n"
+        "price = 12.345\n"
+        "print(tt(f'Hello {name}'))\n"
+        "print(tt(f'Price: {price:.2f}'))\n"
+        "print(other(f'Ignored {name}'))\n",
+        encoding="utf-8",
+    )
+    hidden_dir = tmp_path / ".venv"
+    hidden_dir.mkdir()
+    (hidden_dir / "ignored.py").write_text(
+        "print(tt(f'Hidden {name}'))\n",
+        encoding="utf-8",
+    )
+    (locale_dir / "en.toml").write_text('"Existing" = "Existing"\n', encoding="utf-8")
+
+    exit_code = cli.main(
+        [
+            "collect",
+            "--source",
+            str(tmp_path),
+            "--locale-dir",
+            str(locale_dir),
+            "--source-locale",
+            "en",
+        ]
+    )
+
+    assert exit_code == 0
+    assert load_string_table(str(locale_dir / "en.toml")) == {
+        "Existing": "Existing",
+        "Hello {name}": "Hello {name}",
+        "Price: {price:.2f}": "Price: {price:.2f}",
+    }
+    cues = load_string_table(str(tmp_path / ".locales_cue" / "en.toml"))
+    assert "Template: Hello {name}" in cues["Hello {name}"]
+    assert "Definition: name = 'Alice'" in cues["Hello {name}"]
+    assert "Allowed candidates: {name}" in cues["Hello {name}"]
+    assert "Template: Price: {price:.2f}" in cues["Price: {price:.2f}"]
+    assert "Source placeholder already uses an f-string format spec." in cues["Price: {price:.2f}"]
+
+
+def test_tt_collect_dry_run_does_not_write(tmp_path):
+    source_dir = tmp_path / "src"
+    locale_dir = tmp_path / "locales"
+    source_dir.mkdir()
+    locale_dir.mkdir()
+    (source_dir / "app.py").write_text(
+        "name = 'Alice'\n"
+        "print(tt(f'Hello {name}'))\n",
+        encoding="utf-8",
+    )
+
+    exit_code = cli.main(
+        [
+            "collect",
+            "--source",
+            str(source_dir),
+            "--locale-dir",
+            str(locale_dir),
+            "--source-locale",
+            "en",
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 0
+    assert load_string_table(str(locale_dir / "en.toml")) == {}
+    assert load_string_table(str(tmp_path / ".locales_cue" / "en.toml")) == {}
 
 
 def test_tt_translate_rejects_invalid_placeholders(monkeypatch, tmp_path):

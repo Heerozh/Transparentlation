@@ -26,4 +26,5 @@ dev = [
     "ipykernel>=7.2.0",
     "pytest>=9.0.2",
     "pytest-benchmark>=5.2.3",
+    "ruff>=0.15.6",
 ]

@@ -10,7 +10,9 @@ from typing import Any
 import executing
 from babel import Locale
 from babel.support import Format
-from .toml_io import load_string_table, write_string_table
+
+from .source_templates import extract_template_from_call
+from .toml_io import load_string_table
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,34 +31,15 @@ def _make_cache_key(frame: FrameType) -> CacheKey:
     return (code.co_filename, code.co_firstlineno, qualified_name, frame.f_lasti)
 
 
-def _normalize_locale_names(
-    locale_str: str, collect_locales: list[str] | tuple[str, ...] | None
-) -> tuple[str, ...]:
-    raw_locales = collect_locales or [locale_str]
-    normalized: list[str] = []
-
-    for value in raw_locales:
-        language = Locale.parse(value).language
-        if language not in normalized:
-            normalized.append(language)
-
-    return tuple(normalized)
-
-
 class TransparentTranslator:
     def __init__(
         self,
         locale_str: str = "en",
         locale_dir: str = "locales",
-        *,
-        collect_missing: bool = False,
-        collect_locales: list[str] | tuple[str, ...] | None = None,
     ):
         self.locale = Locale.parse(locale_str)
         self.format = Format(self.locale)
         self.locale_dir = locale_dir
-        self.collect_missing = collect_missing
-        self.collect_locales = _normalize_locale_names(locale_str, collect_locales)
         self.translations: dict[str, str] = {}
         self._cache: dict[CacheKey, CacheEntry] = {}
         self.reload()
@@ -70,39 +53,10 @@ class TransparentTranslator:
         self._cache.clear()
 
     def get_translation(self, source_template: str) -> str:
-        return self.get_translation_with_cue(source_template, source_template)
-
-    def get_translation_with_cue(self, source_template: str, rendered_text: str) -> str:
         translated = self.translations.get(source_template)
         if isinstance(translated, str):
             return translated
-
-        self.collect(source_template, cue=rendered_text)
         return source_template
-
-    def collect(self, text: str, cue: str | None = None) -> str:
-        """Persist a runtime string into the configured locale TOML files when enabled."""
-        if not self.collect_missing or not text:
-            return text
-
-        cue_text = cue if cue is not None else text
-        for locale_name in self.collect_locales:
-            toml_path = self._locale_file_path(locale_name)
-            collected = self._read_translation_file(toml_path)
-            if text not in collected:
-                collected[text] = text
-                self._write_translation_file(toml_path, collected)
-
-            cue_path = self._cue_file_path(locale_name)
-            cues = self._read_translation_file(cue_path)
-            if text not in cues:
-                cues[text] = cue_text
-                self._write_translation_file(cue_path, cues)
-
-        if self.locale.language in self.collect_locales:
-            self.translations[text] = self.translations.get(text, text)
-
-        return text
 
     def translate(self, text: str) -> str:
         frame = inspect.currentframe()
@@ -117,24 +71,10 @@ class TransparentTranslator:
             del frame
 
     def _load_translations(self) -> dict[str, str]:
-        return self._read_translation_file(self._locale_file_path(self.locale.language))
+        return load_string_table(self._locale_file_path(self.locale.language))
 
     def _locale_file_path(self, locale_name: str) -> str:
         return os.path.join(self.locale_dir, f"{locale_name}.toml")
-
-    def _cue_dir_path(self) -> str:
-        locale_dir_name = os.path.basename(os.path.normpath(self.locale_dir))
-        parent_dir = os.path.dirname(os.path.normpath(self.locale_dir))
-        return os.path.join(parent_dir, f".{locale_dir_name}_cue")
-
-    def _cue_file_path(self, locale_name: str) -> str:
-        return os.path.join(self._cue_dir_path(), f"{locale_name}.toml")
-
-    def _read_translation_file(self, toml_path: str) -> dict[str, str]:
-        return load_string_table(toml_path)
-
-    def _write_translation_file(self, toml_path: str, entries: dict[str, str]) -> None:
-        write_string_table(toml_path, entries)
 
     def _translate_from_frame(self, text: str, frame: FrameType) -> str:
         cache_key = _make_cache_key(frame)
@@ -156,66 +96,14 @@ class TransparentTranslator:
         template, variables = self._parse_ast_node(node)
 
         if template is None:
-            self.collect(fallback_text, cue=fallback_text)
             return None
 
-        translated = self.get_translation_with_cue(template, fallback_text)
+        translated = self.get_translation(template)
         compiled_code = self._compile_foreign_string(translated)
         return CacheEntry(template=template, variables=variables, compiled_code=compiled_code)
 
     def _parse_ast_node(self, node: ast.AST | None) -> tuple[str | None, tuple[str, ...]]:
-        if not isinstance(node, ast.Call) or not node.args:
-            return None, ()
-
-        arg = node.args[0]
-        if isinstance(arg, ast.Constant):
-            return str(arg.value), ()
-
-        if not isinstance(arg, ast.JoinedStr):
-            return None, ()
-
-        parts: list[str] = []
-        variables: list[str] = []
-
-        for value in arg.values:
-            if isinstance(value, ast.Constant):
-                parts.append(str(value.value))
-                continue
-
-            if isinstance(value, ast.FormattedValue):
-                rendered, expressions = self._render_formatted_value(value)
-                parts.append(rendered)
-                variables.extend(expressions)
-
-        return "".join(parts), tuple(variables)
-
-    def _render_joined_str(self, node: ast.JoinedStr) -> tuple[str, tuple[str, ...]]:
-        parts: list[str] = []
-        expressions: list[str] = []
-
-        for value in node.values:
-            if isinstance(value, ast.Constant):
-                parts.append(str(value.value))
-                continue
-
-            if isinstance(value, ast.FormattedValue):
-                rendered, nested_expressions = self._render_formatted_value(value)
-                parts.append(rendered)
-                expressions.extend(nested_expressions)
-
-        return "".join(parts), tuple(expressions)
-
-    def _render_formatted_value(self, node: ast.FormattedValue) -> tuple[str, tuple[str, ...]]:
-        expression = ast.unparse(node.value)
-        conversion = "" if node.conversion < 0 else f"!{chr(node.conversion)}"
-        format_spec = ""
-        nested_expressions: tuple[str, ...] = ()
-
-        if isinstance(node.format_spec, ast.JoinedStr):
-            rendered_spec, nested_expressions = self._render_joined_str(node.format_spec)
-            format_spec = f":{rendered_spec}"
-
-        return f"{{{expression}{conversion}{format_spec}}}", (expression, *nested_expressions)
+        return extract_template_from_call(node)
 
     def _compile_foreign_string(self, translated: str) -> Any | None:
         try:
@@ -239,14 +127,6 @@ class TransparentTranslator:
 def install(
     locale_str: str,
     locale_dir: str = "locales",
-    *,
-    collect_missing: bool = False,
-    collect_locales: list[str] | tuple[str, ...] | None = None,
 ) -> TransparentTranslator:
     """Create a translator instance without mutating the module-level default translator."""
-    return TransparentTranslator(
-        locale_str,
-        locale_dir,
-        collect_missing=collect_missing,
-        collect_locales=collect_locales,
-    )
+    return TransparentTranslator(locale_str, locale_dir)

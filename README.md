@@ -13,7 +13,7 @@ Stable today:
 - TOML-backed translation lookup
 - Babel `fmt.*` placeholder support inside translated templates
 - Per-instance call-site cache with `reload()` and `clear_cache()`
-- Optional runtime collection of missing strings into TOML
+- `tt collect` for static extraction of `tt(f"...")` templates into TOML
 
 Planned:
 - AI-assisted translation generation
@@ -83,10 +83,9 @@ from autolang import (
 )
 ```
 
-- `install(locale_str, locale_dir="locales", collect_missing=False, collect_locales=None)` creates and returns a translator instance.
-- `TransparentTranslator(locale_str, locale_dir="locales", collect_missing=False, collect_locales=None)` creates an explicit translator instance with its own cache.
+- `install(locale_str, locale_dir="locales")` creates and returns a translator instance.
+- `TransparentTranslator(locale_str, locale_dir="locales")` creates an explicit translator instance with its own cache.
 - `translator.translate(text)` translates the current call site.
-- `translator.collect(text, cue=None)` records a runtime string into the configured collection TOML and returns the original text.
 - `translator.reload()` reloads the instance locale file and clears its cached call-site entries.
 - `translator.clear_cache()` clears the instance cache without reloading files.
 
@@ -99,55 +98,6 @@ from autolang import install
 
 translator = install("es", "locales")
 tt = translator.translate
-```
-
-If you also want runtime collection helpers in the same module:
-
-```python
-from autolang import install
-
-translator = install("es", "locales", collect_missing=True, collect_locales=["en", "es"])
-tt = translator.translate
-collect = translator.collect
-```
-
-## Runtime Collection
-
-If you want untranslated text to be collected while the program runs, enable `collect_missing` on your own translator instance.
-
-```python
-from autolang import install
-
-translator = install("es", "locales", collect_missing=True, collect_locales=["en", "es", "fr"])
-tt = translator.translate
-
-name = "Alice"
-print(tt(f"Hello {name}"))
-translator.collect("background worker started")
-```
-
-This writes missing entries directly into each configured translation table:
-
-```toml
-"Hello {name}" = "Hello {name}"
-"background worker started" = "background worker started"
-```
-
-For the example above, the library writes the same placeholder entries into:
-- `locales/en.toml`
-- `locales/es.toml`
-- `locales/fr.toml`
-
-It also writes the runtime rendered result for each key into parallel cue files:
-- `.locales_cue/en.toml`
-- `.locales_cue/es.toml`
-- `.locales_cue/fr.toml`
-
-Example cue file:
-
-```toml
-"Hello {name}" = "Hello Alice"
-"background worker started" = "background worker started"
 ```
 
 ## CLI
@@ -166,7 +116,7 @@ tt translate \
 
 By default, the command:
 - reads `locales/en.toml` as the source table
-- reads `.locales_cue/en.toml` as rendered-example cues when available
+- reads `.locales_cue/en.toml` as cue text when available
 - discovers every other `*.toml` file under the same directory as a target locale
 - only translates entries that are missing or still equal to the source text
 - sends translation requests in batches and can execute multiple batches concurrently
@@ -184,6 +134,23 @@ The CLI also reads these environment variables:
 - `TT_API_KEY` or `OPENAI_API_KEY`
 - `TT_BASE_URL` or `OPENAI_BASE_URL`
 - `TT_MODEL` or `OPENAI_MODEL`
+
+Collect `tt(...)` templates from Python source files into the source locale TOML:
+
+```bash
+tt collect \
+  --source src \
+  --locale-dir locales \
+  --source-locale en
+```
+
+By default, the command:
+- scans Python files under `--source`
+- extracts `tt("...")` and `tt(f"...")` call sites through a Babel-compatible extractor
+- skips hidden and cache/build directories such as `.git`, `.venv`, and `__pycache__`
+- writes missing keys into `locales/en.toml` as `source = source`
+- writes static cue entries into `.locales_cue/en.toml`
+- includes per-placeholder context such as the nearest assignment, parameter annotation, allowed `fmt.*` candidates, and a recommended candidate when confidence is high
 
 ## How It Works
 
@@ -204,9 +171,7 @@ This is not a drop-in replacement for mature gettext tooling yet.
 - The main path is designed for direct `tt(f"...")` usage after binding `tt = translator.translate`.
 - Library code should keep its own translator instance and bind its own `tt` function in module scope.
 - Translation lookup is currently a flat TOML key-value map.
-- Runtime collection writes flat TOML entries and currently rewrites the file content instead of preserving comments.
-- Runtime collection writes directly into the language TOML files you configure in `collect_locales`.
-- Runtime cue collection writes rendered examples into a sibling hidden directory such as `.locales_cue`.
+- Static cue collection writes analysis data into a sibling hidden directory such as `.locales_cue`.
 - If translated placeholder expressions are invalid or fail at evaluation time, the library falls back to the original rendered text.
 - The library currently relies on runtime frame inspection and AST recovery, so unusual execution environments may behave differently.
 
@@ -220,6 +185,6 @@ uv run pytest -q
 
 ## Roadmap
 
-- AI-generated translations from source templates and rendered examples
+- AI-generated translations from source templates and static cues
 - Locale file generation and diffing
 - Better developer tooling around extraction, validation, and review

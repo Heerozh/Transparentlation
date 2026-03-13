@@ -9,7 +9,7 @@ Use `uv` for local development.
 - `uv sync --dev` installs runtime and development dependencies from `pyproject.toml`.
 - `uv run pytest -q` runs the full test suite, including benchmark tests.
 - `uv run pytest tests/test_core.py -q` runs a focused subset while iterating.
-- `uv run pyright` runs static type checking using the repository's `standard` mode setting.
+- `uv run basedpyright` runs static type checking using the repository's `standard` mode setting.
 - `uv run ruff` for code style check.
 - `uv build` builds a distributable package when you need to validate packaging metadata.
 

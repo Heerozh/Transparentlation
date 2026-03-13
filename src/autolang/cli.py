@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from babel import Locale
+from babel.messages.extract import extract, extract_from_dir
 
 from .toml_io import load_string_table, write_string_table
 
@@ -20,7 +21,7 @@ TRANSLATION_SYSTEM_PROMPT = """You are a localization rewrite engine for python 
 
 Task:
 Translate each source template into the target language while preserving placeholders.
-Use both the source template and the rendered example.
+Use the source template together with the cue from static analysis.
 
 Output format:
 Return JSON only:
@@ -61,11 +62,12 @@ Hard rules:
 3. Only change a placeholder by keeping it unchanged or wrapping the original expression with one allowed fmt helper.
 4. If the source template already contains an allowed fmt helper, keep that placeholder expression exactly.
 5. Do not output arbitrary code, indexing, attribute access, or method calls other than allowed fmt helpers.
-6. If a rendered example strongly indicates date, time, datetime, currency, percent, compact number, or timedelta formatting, you may apply the matching fmt helper.
-7. If the cue is weak or ambiguous, keep the placeholder unchanged.
-8. Return one item for every input id.
-9. Do not explain your reasoning.
-10. Return JSON only.
+6. If the cue strongly indicates date, time, datetime, currency, percent, compact number, or timedelta formatting, you may apply the matching fmt helper.
+7. If the cue includes allowed candidates, stay within those candidates unless the source already uses an allowed fmt helper.
+8. If the cue is weak or ambiguous, keep the placeholder unchanged.
+9. Return one item for every input id.
+10. Do not explain your reasoning.
+11. Return JSON only.
 """
 
 PLACEHOLDER_PATTERN = re.compile(r"\{([^{}]+)\}")
@@ -82,13 +84,21 @@ ALLOWED_FMT_FUNCS = {
     "timedelta",
 }
 COMPACT_SCALE_VALUES = {1000, 1000000, 1000000000}
+TT_EXTRACTION_METHOD = "autolang.extractors:extract_tt_python"
+TT_EXTRACTION_KEYWORDS = {"tt": None}
+SKIPPED_SOURCE_DIR_NAMES = {
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+}
 
 
 @dataclass(frozen=True, slots=True)
 class TranslationTask:
     key: str
     source_text: str
-    rendered_example: str
+    cue_text: str
     target_locale: str
     target_language: str
 
@@ -98,7 +108,7 @@ class BatchTranslationItem:
     id: str
     key: str
     source_text: str
-    rendered_example: str
+    cue_text: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,6 +241,16 @@ def build_parser() -> argparse.ArgumentParser:
     translate_parser.add_argument("--dry-run", action="store_true")
     translate_parser.set_defaults(handler=handle_translate_command)
 
+    collect_parser = subparsers.add_parser(
+        "collect",
+        help="Collect tt()-wrapped source templates into the source locale TOML file.",
+    )
+    collect_parser.add_argument("--source", default=".")
+    collect_parser.add_argument("--locale-dir", default="locales")
+    collect_parser.add_argument("--source-locale", default="en")
+    collect_parser.add_argument("--dry-run", action="store_true")
+    collect_parser.set_defaults(handler=handle_collect_command)
+
     return parser
 
 
@@ -325,6 +345,37 @@ def handle_translate_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_collect_command(args: argparse.Namespace) -> int:
+    source_path = Path(args.source)
+    locale_dir = Path(args.locale_dir)
+    source_locale = normalize_language(args.source_locale)
+
+    extracted_cues, scanned_files = collect_source_templates(source_path)
+    unique_messages = list(extracted_cues)
+
+    source_path = locale_dir / f"{source_locale}.toml"
+    cue_path = build_source_cue_path(locale_dir, source_locale)
+    source_entries = load_string_table(str(source_path))
+    source_cues = load_string_table(str(cue_path))
+    added_entries = 0
+
+    for message in unique_messages:
+        if message not in source_entries:
+            source_entries[message] = message
+            added_entries += 1
+        source_cues[message] = extracted_cues.get(message, "")
+
+    if not args.dry_run:
+        write_string_table(str(source_path), source_entries)
+        write_string_table(str(cue_path), source_cues)
+
+    print(
+        f"Scanned {scanned_files} Python file(s), collected {len(unique_messages)} template(s), "
+        f"added {added_entries} new entry/entries."
+    )
+    return 0
+
+
 def build_translation_tasks(
     *,
     source_entries: dict[str, str],
@@ -345,7 +396,7 @@ def build_translation_tasks(
             TranslationTask(
                 key=key,
                 source_text=source_text,
-                rendered_example=source_cues.get(key, source_text),
+                cue_text=source_cues.get(key, ""),
                 target_locale=target_locale,
                 target_language=target_language,
             )
@@ -371,7 +422,7 @@ def run_translation_batches(
                     id=task.key,
                     key=task.key,
                     source_text=task.source_text,
-                    rendered_example=task.rendered_example,
+                    cue_text=task.cue_text,
                 )
                 for task in chunk
             )
@@ -450,8 +501,8 @@ def build_batch_user_prompt(request: BatchTranslationRequest) -> str:
                 "Source template:",
                 item.source_text,
                 "",
-                "Rendered example:",
-                item.rendered_example,
+                "Cue:",
+                item.cue_text or "No additional cue.",
                 "",
             ]
         )
@@ -710,9 +761,67 @@ def resolve_target_locales(
     return discovered
 
 
+def collect_source_templates(source_path: Path) -> tuple[dict[str, str], int]:
+    if not source_path.exists():
+        raise SystemExit(f"Source path not found: {source_path}")
+
+    if source_path.is_file():
+        if source_path.suffix != ".py":
+            raise SystemExit(f"Source path must be a Python file or directory: {source_path}")
+        return extract_templates_from_file(source_path), 1
+
+    scanned_files: set[str] = set()
+    extracted = extract_from_dir(
+        str(source_path),
+        method_map=[("**.py", TT_EXTRACTION_METHOD)],
+        keywords=TT_EXTRACTION_KEYWORDS,
+        callback=build_extraction_callback(scanned_files),
+        directory_filter=should_recurse_into_directory,
+    )
+    cues: dict[str, str] = {}
+    for _filename, _lineno, message, comments, _context in extracted:
+        if not isinstance(message, str) or not message:
+            continue
+        cues.setdefault(message, comments[0] if comments else "")
+    return cues, len(scanned_files)
+
+
+def extract_templates_from_file(source_path: Path) -> dict[str, str]:
+    with source_path.open("rb") as fileobj:
+        extracted = extract(
+            TT_EXTRACTION_METHOD,
+            fileobj,
+            keywords=TT_EXTRACTION_KEYWORDS,
+            options={"filename": str(source_path)},
+        )
+        cues: dict[str, str] = {}
+        for _lineno, message, comments, _context in extracted:
+            if isinstance(message, str) and message:
+                cues.setdefault(message, comments[0] if comments else "")
+        return cues
+
+
 def load_source_cues(locale_dir: Path, source_locale: str) -> dict[str, str]:
+    return load_string_table(str(build_source_cue_path(locale_dir, source_locale)))
+
+
+def build_extraction_callback(scanned_files: set[str]):
+    def callback(filename: str, method: str, options: dict[str, object]) -> None:
+        del method
+        scanned_files.add(filename)
+        options["filename"] = filename
+
+    return callback
+
+
+def build_source_cue_path(locale_dir: Path, source_locale: str) -> Path:
     cue_dir = locale_dir.parent / f".{locale_dir.name}_cue"
-    return load_string_table(str(cue_dir / f"{source_locale}.toml"))
+    return cue_dir / f"{source_locale}.toml"
+
+
+def should_recurse_into_directory(path: str) -> bool:
+    name = Path(path).name
+    return not name.startswith(".") and name not in SKIPPED_SOURCE_DIR_NAMES
 
 
 def normalize_language(locale_name: str) -> str:
