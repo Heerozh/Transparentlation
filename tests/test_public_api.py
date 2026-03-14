@@ -1,6 +1,6 @@
+import importlib
 import os
 import sys
-import importlib
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -17,7 +17,7 @@ def test_install_returns_translator_instance(tmp_path):
 
     assert isinstance(translator, TransparentTranslator)
 
-
+ 
 def test_install_result_can_be_bound_to_module_level_tt(tmp_path):
     (tmp_path / "es.toml").write_text('"Hello {name}" = "Hola {name}"\n', encoding="utf-8")
     translator = install(str(tmp_path), "es")

@@ -14,7 +14,7 @@ SKIPPED_SOURCE_DIR_NAMES = {
     "dist",
     "node_modules",
 }
-NO_TRANSLATION = "NO_TRANSLATION"
+MISSING_TRANSLATION = "MISSING_TRANSLATION"
 
 
 def load_shared_cues(locale_dir: Path) -> dict[str, str]:

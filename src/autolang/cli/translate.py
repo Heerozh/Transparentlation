@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ..toml_io import load_string_table, write_string_table
 from .common import (
-    NO_TRANSLATION,
+    MISSING_TRANSLATION,
     list_locale_files,
     load_shared_cues,
     locale_display_name,
@@ -701,7 +701,7 @@ def should_translate_entry(current_text: str | None, overwrite: bool) -> bool:
     if overwrite:
         return True
 
-    return current_text == NO_TRANSLATION
+    return current_text == MISSING_TRANSLATION
 
 
 def chunked(items: list[TranslationTask], size: int) -> list[list[TranslationTask]]:

@@ -7,6 +7,7 @@ import os
 from dataclasses import dataclass
 from types import CodeType, FrameType
 from typing import Any
+from venv import logger
 
 import executing
 from babel import Locale
@@ -15,7 +16,6 @@ from babel.support import Format
 
 from .source_templates import extract_template_from_call
 from .toml_io import load_string_table
-
 
 _ENGLISH_LOCALE = Locale.parse("en")
 _LANGUAGE_NAME_TO_CODE = {
@@ -104,12 +104,10 @@ class TransparentTranslator:
         entry = self._cache.get(cache_key)
 
         if entry is None:
-            entry = self._cache.get(cache_key)
+            entry = self._build_cache_entry(frame, text)
             if entry is None:
-                entry = self._build_cache_entry(frame, text)
-                if entry is None:
-                    return text
-                self._cache[cache_key] = entry
+                return text
+            self._cache[cache_key] = entry
 
         return self._evaluate(entry.compiled_code, frame, text)
 
@@ -144,6 +142,7 @@ class TransparentTranslator:
         self, compiled_code: Any | None, frame: FrameType, fallback: str
     ) -> str:
         if compiled_code is None:
+            logger.warning("Fallback, compiled code is none")
             return fallback
 
         locals_proxy = frame.f_locals.copy()
@@ -151,7 +150,8 @@ class TransparentTranslator:
 
         try:
             return eval(compiled_code, frame.f_globals, locals_proxy)
-        except Exception:
+        except Exception as e:
+            logger.exception(e)
             return fallback
 
 
@@ -230,7 +230,9 @@ def _parse_windows_locale_display_name(locale_str: str) -> str | None:
         script_part = language_part[split_at + 2 : -1]
         language_part = language_part[:split_at]
 
-    language_code = _LANGUAGE_NAME_TO_CODE.get(_normalize_locale_name_part(language_part))
+    language_code = _LANGUAGE_NAME_TO_CODE.get(
+        _normalize_locale_name_part(language_part)
+    )
     if language_code is None:
         return None
 
@@ -245,9 +247,7 @@ def _parse_windows_locale_display_name(locale_str: str) -> str | None:
         )
 
     try:
-        return str(
-            Locale(language_code, territory=territory_code, script=script_code)
-        )
+        return str(Locale(language_code, territory=territory_code, script=script_code))
     except (ValueError, UnknownLocaleError):
         return language_code
 

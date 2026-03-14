@@ -7,7 +7,7 @@ from babel.messages.extract import extract, extract_from_dir
 
 from ..toml_io import load_string_table, write_string_table
 from .common import (
-    NO_TRANSLATION,
+    MISSING_TRANSLATION,
     build_source_cue_path,
     list_locale_files,
     resolve_locale_dir_from_source,
@@ -23,8 +23,12 @@ def handle_sync_command(args: argparse.Namespace) -> int:
     source_path = Path(args.source)
     locale_dir_arg = Path(args.locale_dir)
 
-    extracted_cues, scanned_files, template_files = collect_source_templates(source_path)
-    locale_dir = resolve_locale_dir_from_source(source_path, locale_dir_arg, template_files)
+    extracted_cues, scanned_files, template_files = collect_source_templates(
+        source_path
+    )
+    locale_dir = resolve_locale_dir_from_source(
+        source_path, locale_dir_arg, template_files
+    )
     unique_messages = list(extracted_cues)
     locale_files = list_locale_files(locale_dir)
 
@@ -48,7 +52,7 @@ def handle_sync_command(args: argparse.Namespace) -> int:
             if message in current_entries:
                 synced_entries[message] = current_entries[message]
             else:
-                synced_entries[message] = NO_TRANSLATION
+                synced_entries[message] = MISSING_TRANSLATION
                 total_added_entries += 1
         total_removed_entries += len(set(current_entries) - set(unique_messages))
         synced_locale_entries[locale_path] = synced_entries
@@ -75,7 +79,9 @@ def handle_sync_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def collect_source_templates(source_path: Path) -> tuple[dict[str, str], int, set[Path]]:
+def collect_source_templates(
+    source_path: Path,
+) -> tuple[dict[str, str], int, set[Path]]:
     if not source_path.exists():
         raise SystemExit(tt(f"Source path not found: {source_path}"))
 

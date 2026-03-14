@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ..toml_io import write_string_table
 from .common import (
-    NO_TRANSLATION,
+    MISSING_TRANSLATION,
     build_source_cue_path,
     list_locale_files,
     normalize_locale_name,
@@ -43,7 +43,7 @@ def handle_init_command(args: argparse.Namespace) -> int:
                 "Re-run with --force to replace them."
             )
         )
-    entries = {message: NO_TRANSLATION for message in extracted_cues}
+    entries = {message: MISSING_TRANSLATION for message in extracted_cues}
 
     if not args.dry_run:
         if args.force:

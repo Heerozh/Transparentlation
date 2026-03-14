@@ -1,15 +1,17 @@
-import pytest
-from datetime import datetime
 import os
 import sys
+from datetime import datetime
+
+import pytest
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 )
 
-from autolang import TransparentTranslator, install
-from babel.support import Format
 from babel import Locale
+from babel.support import Format
+
+from autolang import TransparentTranslator, install
 
 # To prevent NameError before _() catches the frame, we export a dummy fmt obj
 fmt = Format(Locale.parse("en"))
@@ -17,7 +19,9 @@ fmt = Format(Locale.parse("en"))
 
 @pytest.fixture(autouse=True)
 def setup_translator():
-    test_locales_dir = os.path.join(os.path.dirname(__file__), "locales")
+    test_locales_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "locales")
+    )
     return install(test_locales_dir, "es")
 
 
@@ -35,7 +39,9 @@ def test_fallback_untranslated(setup_translator):
 
 def test_currency_formatting(setup_translator):
     balance = 1234.56
-    result = setup_translator.translate(f"Account balance: {fmt.currency(balance, 'USD')}")
+    result = setup_translator.translate(
+        f"Account balance: {fmt.currency(balance, 'USD')}"
+    )
     # In Spanish locale, Babel formats currency differently (e.g., using commas or symbol placement)
     # The expected output may be something like "Saldo de la cuenta: 1234,56 US$"
 
@@ -81,8 +87,12 @@ def test_reload_invalidates_instance_cache(tmp_path):
 
 
 def test_translator_instances_keep_separate_caches(tmp_path):
-    (tmp_path / "es.toml").write_text('"Hello {name}" = "Hola {name}"\n', encoding="utf-8")
-    (tmp_path / "fr.toml").write_text('"Hello {name}" = "Bonjour {name}"\n', encoding="utf-8")
+    (tmp_path / "es.toml").write_text(
+        '"Hello {name}" = "Hola {name}"\n', encoding="utf-8"
+    )
+    (tmp_path / "fr.toml").write_text(
+        '"Hello {name}" = "Bonjour {name}"\n', encoding="utf-8"
+    )
 
     es_translator = TransparentTranslator("es", str(tmp_path))
     fr_translator = TransparentTranslator("fr", str(tmp_path))
@@ -97,7 +107,9 @@ def test_translator_instances_keep_separate_caches(tmp_path):
 
 
 def test_translation_eval_errors_fall_back_to_source_text(tmp_path):
-    (tmp_path / "es.toml").write_text('"Hello {name}" = "Hola {missing}"\n', encoding="utf-8")
+    (tmp_path / "es.toml").write_text(
+        '"Hello {name}" = "Hola {missing}"\n', encoding="utf-8"
+    )
 
     translator = TransparentTranslator("es", str(tmp_path))
     name = "Alice"
@@ -108,7 +120,9 @@ def test_translation_eval_errors_fall_back_to_source_text(tmp_path):
 
 
 def test_translator_uses_script_specific_locale_file(tmp_path):
-    (tmp_path / "zh.toml").write_text('"Hello {name}" = "中文 {name}"\n', encoding="utf-8")
+    (tmp_path / "zh.toml").write_text(
+        '"Hello {name}" = "中文 {name}"\n', encoding="utf-8"
+    )
     (tmp_path / "zh_Hans.toml").write_text(
         '"Hello {name}" = "简体 {name}"\n',
         encoding="utf-8",
@@ -122,13 +136,11 @@ def test_translator_uses_script_specific_locale_file(tmp_path):
 
 def test_translator_loads_full_locale_with_fallback_chain(tmp_path):
     (tmp_path / "zh.toml").write_text(
-        '"General" = "中文"\n'
-        '"Hello {name}" = "中文 {name}"\n',
+        '"General" = "中文"\n"Hello {name}" = "中文 {name}"\n',
         encoding="utf-8",
     )
     (tmp_path / "zh_Hans.toml").write_text(
-        '"Hello {name}" = "简体 {name}"\n'
-        '"ScriptOnly" = "简体专用"\n',
+        '"Hello {name}" = "简体 {name}"\n"ScriptOnly" = "简体专用"\n',
         encoding="utf-8",
     )
     (tmp_path / "zh_Hans_CN.toml").write_text(
