@@ -1,6 +1,5 @@
 import os
 import sys
-from pathlib import Path
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -111,6 +110,22 @@ def test_suggest_placeholder_candidates_treats_currency_type_as_number():
     assert recommended == "{amount}"
     assert confidence == "low"
     assert any("numeric" in note for note in notes)
+
+
+def test_suggest_placeholder_candidates_treats_list_annotation_as_text_like():
+    candidates, recommended, confidence, notes = suggest_placeholder_candidates(
+        expression="items",
+        placeholder="{items}",
+        annotation="list[str]",
+        definition_source="items = items",
+        has_conversion=False,
+        has_format_spec=False,
+    )
+
+    assert candidates == ("{items}",)
+    assert recommended == "{items}"
+    assert confidence == "low"
+    assert any("text-like" in note for note in notes)
 
 
 # ---------------------------------------------------------------------------
@@ -273,3 +288,40 @@ def test_multiline_tt_call_infers_len_expression_as_number_with_real_filename(
     )[0].cue_text
     assert "annotation: int" in cue_text.lower(), cue_text
     assert "numeric" in cue_text.lower() or "number" in cue_text.lower(), cue_text
+
+
+def test_path_value_is_treated_as_text_like(tmp_path):
+    source = (
+        "from pathlib import Path\n"
+        "from autolang import tt\n"
+        "base = Path('demo.txt')\n"
+        "tt(f'{base}')\n"
+    )
+    source_path = tmp_path / "sample.py"
+    source_path.write_text(source, encoding="utf-8")
+
+    cue_text = analyze_static_cues(
+        source_path.read_text(encoding="utf-8"), filename=str(source_path)
+    )[0].cue_text
+    assert "annotation:" in cue_text.lower(), cue_text
+    assert "path" in cue_text.lower(), cue_text
+    assert "allowed candidates: {base}" in cue_text.lower(), cue_text
+    assert "text-like" in cue_text.lower(), cue_text
+
+
+def test_list_value_is_treated_as_text_like(tmp_path):
+    source = (
+        "from autolang import tt\n"
+        "items = [1, 2, 3]\n"
+        "tt(f'{items}')\n"
+    )
+    source_path = tmp_path / "sample.py"
+    source_path.write_text(source, encoding="utf-8")
+
+    cue_text = analyze_static_cues(
+        source_path.read_text(encoding="utf-8"), filename=str(source_path)
+    )[0].cue_text
+    assert "annotation:" in cue_text.lower(), cue_text
+    assert "list" in cue_text.lower(), cue_text
+    assert "allowed candidates: {items}" in cue_text.lower(), cue_text
+    assert "text-like" in cue_text.lower(), cue_text

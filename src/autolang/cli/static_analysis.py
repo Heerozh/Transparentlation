@@ -550,6 +550,10 @@ def _infer_kind_from_annotation(annotation: str | None) -> str | None:
     recognized.discard("none")
     if len(recognized) == 1:
         return next(iter(recognized))
+    if len(recognized) > 1:
+        return None
+    if _annotation_defaults_to_text(normalized):
+        return "text"
     return None
 
 
@@ -585,32 +589,57 @@ def _infer_kind_from_definition(definition_source: str | None) -> str | None:
         func_name = ast.unparse(node.func).lower()
         return _kind_from_type_name(func_name)
 
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
+        return "text"
+
     return None
 
 
 def _kind_from_type_name(type_name: str) -> str | None:
-    normalized = type_name.lower()
-    if normalized.endswith(("str", "builtins.str", "literalstring")):
+    normalized = type_name.replace(" ", "").lower()
+    type_head = _type_head(normalized)
+    terminal = type_head.rsplit(".", 1)[-1]
+
+    if terminal in {
+        "str",
+        "literalstring",
+        "path",
+        "purepath",
+        "pathlike",
+        "list",
+        "dict",
+        "set",
+        "tuple",
+        "sequence",
+        "mapping",
+        "iterable",
+    }:
         return "text"
-    if normalized.endswith(("bool", "builtins.bool")):
+    if terminal == "bool":
         return "boolean"
-    if normalized.endswith(("nonetype", "none")):
+    if terminal in {"nonetype", "none"}:
         return "none"
-    if normalized.endswith(
-        ("int", "float", "decimal", "decimal.decimal", "fraction", "fractions.fraction")
-    ):
+    if terminal in {"int", "float", "decimal", "fraction"}:
         return "number"
-    if normalized.endswith(("datetime.datetime", "datetime")):
+    if type_head.endswith("datetime.datetime") or terminal == "datetime":
         return "datetime"
-    if normalized.endswith(("datetime.date", "date")) and not normalized.endswith(
-        ("datetime.datetime",)
-    ):
+    if type_head.endswith("datetime.date") or terminal == "date":
         return "date"
-    if normalized.endswith(("datetime.time", "time")):
+    if type_head.endswith("datetime.time") or terminal == "time":
         return "time"
-    if normalized.endswith(("datetime.timedelta", "timedelta")):
+    if type_head.endswith("datetime.timedelta") or terminal == "timedelta":
         return "timedelta"
     return None
+
+
+def _annotation_defaults_to_text(annotation: str) -> bool:
+    if not annotation or annotation in {"any", "unknown", "typing.any"}:
+        return False
+    return True
+
+
+def _type_head(type_name: str) -> str:
+    return type_name.split("[", 1)[0]
 
 
 def _build_greedy_candidates(
