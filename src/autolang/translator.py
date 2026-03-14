@@ -157,10 +157,46 @@ def install(
     locale_str: str | None = None,
 ) -> TransparentTranslator:
     """Create a translator instance without mutating the module-level default translator."""
-    return TransparentTranslator(
-        _parse_locale_str(locale_str) or _detect_system_locale(),
-        locale_dir,
-    )
+    frame = inspect.currentframe()
+    caller = frame.f_back if frame is not None else None
+
+    try:
+        return TransparentTranslator(
+            _parse_locale_str(locale_str) or _detect_system_locale(),
+            _resolve_locale_dir(locale_dir, caller),
+        )
+    finally:
+        del caller
+        del frame
+
+
+def _resolve_locale_dir(locale_dir: str, frame: FrameType | None) -> str:
+    if os.path.isabs(locale_dir):
+        return locale_dir
+
+    return os.path.join(_resolve_caller_root_dir(frame), locale_dir)
+
+
+def _resolve_caller_root_dir(frame: FrameType | None) -> str:
+    if frame is None:
+        return os.path.abspath(os.getcwd())
+
+    module_file = frame.f_globals.get("__file__")
+    if not isinstance(module_file, str):
+        return os.path.abspath(os.getcwd())
+
+    root_dir = os.path.dirname(os.path.abspath(module_file))
+    package_name = frame.f_globals.get("__package__")
+    if not isinstance(package_name, str) or not package_name:
+        return root_dir
+
+    for _ in range(max(len(package_name.split(".")) - 1, 0)):
+        parent_dir = os.path.dirname(root_dir)
+        if parent_dir == root_dir:
+            break
+        root_dir = parent_dir
+
+    return root_dir
 
 
 def _parse_locale_str(locale_str: str | None) -> str | None:

@@ -238,6 +238,70 @@ def test_tt_init_creates_locale_files_with_no_translation_markers(tmp_path):
     }
 
 
+def test_tt_init_resolves_relative_locale_dir_to_inferred_package_root(tmp_path):
+    repo_root = tmp_path / "repo"
+    package_dir = repo_root / "src" / "demo_pkg"
+    package_dir.mkdir(parents=True)
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "app.py").write_text(
+        "print(tt('Hello'))\n",
+        encoding="utf-8",
+    )
+
+    exit_code = cli.main(
+        [
+            "init",
+            "--source",
+            str(repo_root),
+            "--locale-dir",
+            "locales",
+            "--locales",
+            "en",
+        ]
+    )
+
+    assert exit_code == 0
+    assert load_string_table(str(package_dir / "locales" / "en.toml")) == {
+        "Hello": "NO_TRANSLATION",
+    }
+    assert not (repo_root / "locales" / "en.toml").exists()
+
+
+def test_tt_sync_resolves_relative_locale_dir_to_inferred_package_root(tmp_path):
+    repo_root = tmp_path / "repo"
+    package_dir = repo_root / "src" / "demo_pkg"
+    locale_dir = package_dir / "locales"
+    package_dir.mkdir(parents=True)
+    locale_dir.mkdir()
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "app.py").write_text(
+        "print(tt('Hello'))\n"
+        "print(tt('Price'))\n",
+        encoding="utf-8",
+    )
+    (locale_dir / "en.toml").write_text(
+        '"Hello" = "Hello"\n',
+        encoding="utf-8",
+    )
+
+    exit_code = cli.main(
+        [
+            "sync",
+            "--source",
+            str(repo_root),
+            "--locale-dir",
+            "locales",
+        ]
+    )
+
+    assert exit_code == 0
+    assert load_string_table(str(locale_dir / "en.toml")) == {
+        "Hello": "Hello",
+        "Price": "NO_TRANSLATION",
+    }
+    assert not (repo_root / "locales" / "en.toml").exists()
+
+
 def test_tt_sync_dry_run_does_not_write(tmp_path):
     source_dir = tmp_path / "src"
     locale_dir = tmp_path / "locales"

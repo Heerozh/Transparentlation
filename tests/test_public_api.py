@@ -1,5 +1,6 @@
 import os
 import sys
+import importlib
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -112,3 +113,67 @@ def test_install_falls_back_to_en_when_system_locale_is_unusable(
     translator = install(str(tmp_path))
 
     assert translator.translate(f"Hello {name}") == "Hello there Alice"
+
+
+def test_install_resolves_default_locale_dir_from_caller_package_root(
+    tmp_path, monkeypatch
+):
+    package_a = tmp_path / "package_a"
+    package_b = tmp_path / "package_b"
+    for package_dir, translated in (
+        (package_a, "甲"),
+        (package_b, "乙"),
+    ):
+        (package_dir / "sub").mkdir(parents=True)
+        (package_dir / "__init__.py").write_text("", encoding="utf-8")
+        (package_dir / "sub" / "__init__.py").write_text("", encoding="utf-8")
+        (package_dir / "locales").mkdir()
+        (package_dir / "locales" / "zh.toml").write_text(
+            f'"Hello {{name}}" = "{translated} {{name}}"\n',
+            encoding="utf-8",
+        )
+        (package_dir / "sub" / "module.py").write_text(
+            "from autolang import install\n"
+            "translator = install(locale_str='zh')\n"
+            "\n"
+            "def greet(name: str) -> str:\n"
+            "    return translator.translate(f'Hello {name}')\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    importlib.invalidate_caches()
+    module_a = importlib.import_module("package_a.sub.module")
+    module_b = importlib.import_module("package_b.sub.module")
+
+    assert module_a.greet("Alice") == "甲 Alice"
+    assert module_b.greet("Alice") == "乙 Alice"
+    assert module_a.translator.locale_dir == str(package_a / "locales")
+    assert module_b.translator.locale_dir == str(package_b / "locales")
+
+
+def test_install_falls_back_to_caller_file_directory_for_non_package_module(
+    tmp_path, monkeypatch
+):
+    module_dir = tmp_path / "scripts"
+    module_dir.mkdir()
+    (module_dir / "locales").mkdir()
+    (module_dir / "locales" / "zh.toml").write_text(
+        '"Hello {name}" = "脚本 {name}"\n',
+        encoding="utf-8",
+    )
+    (module_dir / "tool.py").write_text(
+        "from autolang import install\n"
+        "translator = install(locale_str='zh')\n"
+        "\n"
+        "def greet(name: str) -> str:\n"
+        "    return translator.translate(f'Hello {name}')\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.syspath_prepend(str(module_dir))
+    importlib.invalidate_caches()
+    tool = importlib.import_module("tool")
+
+    assert tool.greet("Alice") == "脚本 Alice"
+    assert tool.translator.locale_dir == str(module_dir / "locales")

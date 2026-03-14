@@ -9,23 +9,24 @@ from .common import (
     build_source_cue_path,
     list_locale_files,
     normalize_language,
+    resolve_locale_dir_from_source,
 )
 from .sync import collect_source_templates
 
 
 def handle_init_command(args: argparse.Namespace) -> int:
     source_path = Path(args.source)
-    locale_dir = Path(args.locale_dir)
+    locale_dir_arg = Path(args.locale_dir)
     locale_names = _resolve_locales(args.locales)
-    cue_dir = locale_dir.parent / f".{locale_dir.name}_cue"
 
+    extracted_cues, scanned_files, template_files = collect_source_templates(source_path)
+    locale_dir = resolve_locale_dir_from_source(source_path, locale_dir_arg, template_files)
+    cue_dir = locale_dir.parent / f".{locale_dir.name}_cue"
     existing_locale_files = list_locale_files(locale_dir)
     if existing_locale_files and not args.force:
         raise SystemExit(
             f"Locale files already exist in {locale_dir}. Re-run with --force to replace them."
         )
-
-    extracted_cues, scanned_files = collect_source_templates(source_path)
     entries = {message: NO_TRANSLATION for message in extracted_cues}
 
     if not args.dry_run:

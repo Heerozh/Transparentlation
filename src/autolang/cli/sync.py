@@ -10,6 +10,7 @@ from .common import (
     NO_TRANSLATION,
     build_source_cue_path,
     list_locale_files,
+    resolve_locale_dir_from_source,
     should_recurse_into_directory,
 )
 
@@ -19,9 +20,10 @@ TT_EXTRACTION_KEYWORDS = {"tt": None}
 
 def handle_sync_command(args: argparse.Namespace) -> int:
     source_path = Path(args.source)
-    locale_dir = Path(args.locale_dir)
+    locale_dir_arg = Path(args.locale_dir)
 
-    extracted_cues, scanned_files = collect_source_templates(source_path)
+    extracted_cues, scanned_files, template_files = collect_source_templates(source_path)
+    locale_dir = resolve_locale_dir_from_source(source_path, locale_dir_arg, template_files)
     unique_messages = list(extracted_cues)
     locale_files = list_locale_files(locale_dir)
 
@@ -68,7 +70,7 @@ def handle_sync_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def collect_source_templates(source_path: Path) -> tuple[dict[str, str], int]:
+def collect_source_templates(source_path: Path) -> tuple[dict[str, str], int, set[Path]]:
     if not source_path.exists():
         raise SystemExit(f"Source path not found: {source_path}")
 
@@ -77,7 +79,7 @@ def collect_source_templates(source_path: Path) -> tuple[dict[str, str], int]:
             raise SystemExit(
                 f"Source path must be a Python file or directory: {source_path}"
             )
-        return extract_templates_from_file(source_path), 1
+        return extract_templates_from_file(source_path), 1, {source_path.resolve()}
 
     scanned_files: set[str] = set()
     extracted = extract_from_dir(
@@ -88,11 +90,13 @@ def collect_source_templates(source_path: Path) -> tuple[dict[str, str], int]:
         directory_filter=should_recurse_into_directory,
     )
     cues: dict[str, str] = {}
+    template_files: set[Path] = set()
     for _filename, _lineno, message, comments, _context in extracted:
         if not isinstance(message, str) or not message:
             continue
+        template_files.add(Path(_filename).resolve())
         cues.setdefault(message, comments[0] if comments else "")
-    return cues, len(scanned_files)
+    return cues, len(scanned_files), template_files
 
 
 def extract_templates_from_file(source_path: Path) -> dict[str, str]:
