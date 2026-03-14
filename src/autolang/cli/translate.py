@@ -17,7 +17,7 @@ from .common import (
     list_locale_files,
     load_shared_cues,
     locale_display_name,
-    normalize_language,
+    normalize_locale_name,
 )
 
 TRANSLATION_SYSTEM_PROMPT = """You are a localization rewrite engine for python template strings with Babel CLDR formatting.
@@ -261,7 +261,7 @@ def handle_translate_command(args: argparse.Namespace) -> int:
         timeout=args.timeout,
     )
 
-    target_locales = [normalize_language(path.stem) for path in locale_files]
+    target_locales = [normalize_locale_name(path.stem) for path in locale_files]
     source_cues = load_shared_cues(locale_dir)
     target_entries_by_locale: dict[str, dict[str, str]] = {}
     pending_by_locale: dict[str, list[TranslationTask]] = {}

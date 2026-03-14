@@ -107,6 +107,43 @@ def test_translation_eval_errors_fall_back_to_source_text(tmp_path):
     assert result == "Hello Alice"
 
 
+def test_translator_uses_script_specific_locale_file(tmp_path):
+    (tmp_path / "zh.toml").write_text('"Hello {name}" = "中文 {name}"\n', encoding="utf-8")
+    (tmp_path / "zh_Hans.toml").write_text(
+        '"Hello {name}" = "简体 {name}"\n',
+        encoding="utf-8",
+    )
+
+    translator = TransparentTranslator("zh_Hans", str(tmp_path))
+    name = "Alice"
+
+    assert translator.translate(f"Hello {name}") == "简体 Alice"
+
+
+def test_translator_loads_full_locale_with_fallback_chain(tmp_path):
+    (tmp_path / "zh.toml").write_text(
+        '"General" = "中文"\n'
+        '"Hello {name}" = "中文 {name}"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "zh_Hans.toml").write_text(
+        '"Hello {name}" = "简体 {name}"\n'
+        '"ScriptOnly" = "简体专用"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "zh_Hans_CN.toml").write_text(
+        '"Hello {name}" = "中国简体 {name}"\n',
+        encoding="utf-8",
+    )
+
+    translator = TransparentTranslator("zh_Hans_CN", str(tmp_path))
+    name = "Alice"
+
+    assert translator.translate(f"Hello {name}") == "中国简体 Alice"
+    assert translator.get_translation("ScriptOnly") == "简体专用"
+    assert translator.get_translation("General") == "中文"
+
+
 def test_f_string_format_spec_is_preserved_in_translation_key(tmp_path):
     (tmp_path / "es.toml").write_text(
         '"Price: {price:.2f}" = "Precio: {price:.2f}"\n',

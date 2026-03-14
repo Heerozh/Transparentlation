@@ -393,7 +393,7 @@ def test_tt_init_allows_adding_new_locale_when_other_locale_files_exist(tmp_path
 
     assert exit_code == 0
     assert load_string_table(str(locale_dir / "en.toml")) == {"Hello": "Hello"}
-    assert load_string_table(str(locale_dir / "zh.toml")) == {
+    assert load_string_table(str(locale_dir / "zh_Hans.toml")) == {
         "Hello": "NO_TRANSLATION",
     }
 
@@ -429,10 +429,40 @@ def test_tt_init_force_only_replaces_requested_locales(tmp_path):
         "Hello": "Existing English",
     }
     assert load_string_table(str(locale_dir / "zh.toml")) == {
+        "Hello": "旧中文",
+    }
+    assert load_string_table(str(locale_dir / "zh_Hans.toml")) == {
         "Hello": "NO_TRANSLATION",
     }
     assert load_string_table(str(cue_dir / "en.toml")) == {"Hello": "existing cue"}
-    assert "Template: Hello" in load_string_table(str(cue_dir / "zh.toml"))["Hello"]
+    assert load_string_table(str(cue_dir / "zh.toml")) == {"Hello": "旧线索"}
+    assert "Template: Hello" in load_string_table(str(cue_dir / "zh_Hans.toml"))["Hello"]
+
+
+def test_tt_init_preserves_script_and_territory_in_locale_file_names(tmp_path):
+    source_dir = tmp_path / "src"
+    locale_dir = tmp_path / "locales"
+    source_dir.mkdir()
+    (source_dir / "app.py").write_text("print(tt('Hello'))\n", encoding="utf-8")
+
+    exit_code = cli.main(
+        [
+            "init",
+            "--source",
+            str(source_dir),
+            "--locale-dir",
+            str(locale_dir),
+            "--locales",
+            "zh_hans",
+            "zh_hans_cn",
+            "pt_br",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (locale_dir / "zh_Hans.toml").is_file()
+    assert (locale_dir / "zh_Hans_CN.toml").is_file()
+    assert (locale_dir / "pt_BR.toml").is_file()
 
 
 def test_tt_translate_rejects_invalid_placeholders(monkeypatch, tmp_path):

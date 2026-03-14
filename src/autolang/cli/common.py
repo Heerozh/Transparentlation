@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from babel import Locale
+from babel.core import UnknownLocaleError
 
 from ..toml_io import load_string_table
 
@@ -40,12 +41,19 @@ def should_recurse_into_directory(path: str) -> bool:
     return not name.startswith(".") and name not in SKIPPED_SOURCE_DIR_NAMES
 
 
-def normalize_language(locale_name: str) -> str:
-    return Locale.parse(locale_name).language
+def normalize_locale_name(locale_name: str) -> str:
+    for separator in (None, "-"):
+        try:
+            if separator is None:
+                return str(Locale.parse(locale_name))
+            return str(Locale.parse(locale_name, sep=separator))
+        except (ValueError, UnknownLocaleError):
+            continue
+    raise ValueError(f"Invalid locale identifier: {locale_name}")
 
 
 def locale_display_name(locale_name: str) -> str:
-    locale = Locale.parse(locale_name)
+    locale = Locale.parse(normalize_locale_name(locale_name))
     return locale.get_display_name("en").title()
 
 

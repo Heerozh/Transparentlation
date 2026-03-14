@@ -91,7 +91,10 @@ class TransparentTranslator:
             del frame
 
     def _load_translations(self) -> dict[str, str]:
-        return load_string_table(self._locale_file_path(self.locale.language))
+        translations: dict[str, str] = {}
+        for locale_name in _iter_locale_fallback_names(self.locale):
+            translations.update(load_string_table(self._locale_file_path(locale_name)))
+        return translations
 
     def _locale_file_path(self, locale_name: str) -> str:
         return os.path.join(self.locale_dir, f"{locale_name}.toml")
@@ -267,3 +270,20 @@ def _detect_system_locale() -> str:
             return parsed
 
     return "en"
+
+
+def _iter_locale_fallback_names(locale_obj: Locale) -> tuple[str, ...]:
+    locale_names = [locale_obj.language]
+    if locale_obj.script:
+        locale_names.append(str(Locale(locale_obj.language, script=locale_obj.script)))
+    if locale_obj.territory:
+        locale_names.append(
+            str(
+                Locale(
+                    locale_obj.language,
+                    territory=locale_obj.territory,
+                    script=locale_obj.script,
+                )
+            )
+        )
+    return tuple(dict.fromkeys(locale_names))

@@ -8,7 +8,7 @@ from .common import (
     NO_TRANSLATION,
     build_source_cue_path,
     list_locale_files,
-    normalize_language,
+    normalize_locale_name,
     resolve_locale_dir_from_source,
 )
 from .sync import collect_source_templates
@@ -62,7 +62,7 @@ def handle_init_command(args: argparse.Namespace) -> int:
 def _resolve_locales(locales: list[str]) -> list[str]:
     normalized: list[str] = []
     for locale in locales:
-        locale_name = normalize_language(locale)
+        locale_name = normalize_locale_name(locale)
         if locale_name not in normalized:
             normalized.append(locale_name)
     return normalized
