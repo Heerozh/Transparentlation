@@ -11,6 +11,7 @@ from .common import (
     normalize_locale_name,
     resolve_locale_dir_from_source,
 )
+from .i18n import tt
 from .sync import collect_source_templates
 
 
@@ -19,11 +20,13 @@ def handle_init_command(args: argparse.Namespace) -> int:
     locale_dir_arg = Path(args.locale_dir)
     locale_names = _resolve_locales(args.locales)
 
-    extracted_cues, scanned_files, template_files = collect_source_templates(source_path)
-    locale_dir = resolve_locale_dir_from_source(source_path, locale_dir_arg, template_files)
-    existing_locale_files = {
-        path.stem: path for path in list_locale_files(locale_dir)
-    }
+    extracted_cues, scanned_files, template_files = collect_source_templates(
+        source_path
+    )
+    locale_dir = resolve_locale_dir_from_source(
+        source_path, locale_dir_arg, template_files
+    )
+    existing_locale_files = {path.stem: path for path in list_locale_files(locale_dir)}
     requested_locale_files = {
         locale_name: locale_dir / f"{locale_name}.toml" for locale_name in locale_names
     }
@@ -34,9 +37,11 @@ def handle_init_command(args: argparse.Namespace) -> int:
     ]
     if conflicting_locale_names and not args.force:
         raise SystemExit(
-            "Locale files already exist for "
-            f"{', '.join(conflicting_locale_names)} in {locale_dir}. "
-            "Re-run with --force to replace them."
+            tt(
+                "Locale files already exist for "
+                f"{', '.join(conflicting_locale_names)} in {locale_dir}. "
+                "Re-run with --force to replace them."
+            )
         )
     entries = {message: NO_TRANSLATION for message in extracted_cues}
 
@@ -50,11 +55,15 @@ def handle_init_command(args: argparse.Namespace) -> int:
 
         for locale_name in locale_names:
             write_string_table(str(locale_dir / f"{locale_name}.toml"), entries)
-            write_string_table(str(build_source_cue_path(locale_dir, locale_name)), extracted_cues)
+            write_string_table(
+                str(build_source_cue_path(locale_dir, locale_name)), extracted_cues
+            )
 
     print(
-        f"Scanned {scanned_files} Python file(s), initialized {len(locale_names)} locale file(s), "
-        f"created {len(entries)} template entry/entries."
+        tt(
+            f"Scanned {scanned_files} Python file(s), initialized {len(locale_names)} locale file(s), "
+            f"created {len(entries)} template entry/entries."
+        )
     )
     return 0
 

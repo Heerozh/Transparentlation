@@ -6,6 +6,7 @@ from babel import Locale
 from babel.core import UnknownLocaleError
 
 from ..toml_io import load_string_table
+from .i18n import tt
 
 SKIPPED_SOURCE_DIR_NAMES = {
     "__pycache__",
@@ -76,8 +77,10 @@ def infer_package_root(source_path: Path, template_files: set[Path]) -> Path:
         return next(iter(package_roots))
     if len(package_roots) > 1:
         raise SystemExit(
-            "Multiple package roots matched the extracted templates. "
-            "Pass an absolute --locale-dir or narrow --source."
+            tt(
+                "Multiple package roots matched the extracted templates. "
+                "Pass an absolute --locale-dir or narrow --source."
+            )
         )
 
     inferred_root = _infer_package_root_from_source(source_path)
@@ -106,8 +109,10 @@ def _infer_package_root_from_source(source_path: Path) -> Path | None:
         return next(iter(package_roots))
     if len(package_roots) > 1:
         raise SystemExit(
-            "Could not infer a unique package root from --source. "
-            "Pass an absolute --locale-dir or narrow --source."
+            tt(
+                "Could not infer a unique package root from --source. "
+                "Pass an absolute --locale-dir or narrow --source."
+            )
         )
 
     return None

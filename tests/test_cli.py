@@ -8,6 +8,8 @@ sys.path.insert(
 )
 
 from autolang import cli
+from autolang.cli import init as cli_init
+from autolang.cli import sync as cli_sync
 from autolang.cli import translate as cli_translate
 from autolang.toml_io import load_string_table
 
@@ -50,6 +52,31 @@ class InvalidPlaceholderClient:
         return {
             item.id: cli.TranslationResult(id=item.id, text="Hola {other}")
         }
+
+
+def test_cli_modules_share_the_same_tt_wrapper():
+    assert cli.tt is cli_init.tt
+    assert cli.tt is cli_sync.tt
+    assert cli.tt is cli_translate.tt
+
+
+def test_tt_sync_routes_errors_through_shared_tt(monkeypatch, tmp_path):
+    missing_source = tmp_path / "missing"
+    locale_dir = tmp_path / "locales"
+    locale_dir.mkdir()
+
+    monkeypatch.setattr(cli_sync, "tt", lambda text: f"[cli]{text}", raising=False)
+
+    with pytest.raises(SystemExit, match=r"^\[cli\]Source path not found: "):
+        cli.main(
+            [
+                "sync",
+                "--source",
+                str(missing_source),
+                "--locale-dir",
+                str(locale_dir),
+            ]
+        )
 
 
 def test_tt_translate_uses_batches_and_cues(monkeypatch, tmp_path):

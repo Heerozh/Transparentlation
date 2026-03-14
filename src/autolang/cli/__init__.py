@@ -5,6 +5,7 @@ import argparse
 from . import init as _init
 from . import sync as _sync
 from . import translate as _translate
+from .i18n import cli_translator, tt
 
 BatchTranslationItem = _translate.BatchTranslationItem
 BatchTranslationOutcome = _translate.BatchTranslationOutcome
@@ -14,7 +15,6 @@ PlaceholderSpec = _translate.PlaceholderSpec
 TranslationResult = _translate.TranslationResult
 TranslationTask = _translate.TranslationTask
 validate_translated_text = _translate.validate_translated_text
-
 
 def handle_translate_command(args: argparse.Namespace) -> int:
     _translate.OpenAICompatibleClient = OpenAICompatibleClient
@@ -30,12 +30,14 @@ def handle_init_command(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="tt", description="Autolang developer tools.")
+    parser = argparse.ArgumentParser(
+        prog="tt", description=tt("Autolang developer tools.")
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     translate_parser = subparsers.add_parser(
         "translate",
-        help="Translate locale TOML files through an OpenAI-compatible API.",
+        help=tt("Translate locale TOML files through an OpenAI-compatible API."),
     )
     translate_parser.add_argument("--locale-dir", default="locales")
     translate_parser.add_argument("--model", default=None)
@@ -50,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync_parser = subparsers.add_parser(
         "sync",
-        help="Sync tt()-wrapped source templates across all locale TOML files.",
+        help=tt("Sync tt()-wrapped source templates across all locale TOML files."),
     )
     sync_parser.add_argument("--source", default=".")
     sync_parser.add_argument("--locale-dir", default="locales")
@@ -59,7 +61,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_parser = subparsers.add_parser(
         "init",
-        help="Initialize locale TOML files from collected tt()-wrapped source templates.",
+        help=tt(
+            "Initialize locale TOML files from collected tt()-wrapped source templates."
+        ),
     )
     init_parser.add_argument("--source", default=".")
     init_parser.add_argument("--locale-dir", default="locales")

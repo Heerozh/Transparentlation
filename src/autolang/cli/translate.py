@@ -19,6 +19,7 @@ from .common import (
     locale_display_name,
     normalize_locale_name,
 )
+from .i18n import tt
 
 TRANSLATION_SYSTEM_PROMPT = """You are a localization rewrite engine for python template strings with Babel CLDR formatting.
 
@@ -222,25 +223,27 @@ def handle_translate_command(args: argparse.Namespace) -> int:
     locale_dir = Path(args.locale_dir)
     locale_files = list_locale_files(locale_dir)
     if not locale_files:
-        raise SystemExit(f"No locale TOML files found in {locale_dir}.")
+        raise SystemExit(tt(f"No locale TOML files found in {locale_dir}."))
 
     source_entries: dict[str, str] = {}
     for locale_path in locale_files:
         for key in load_string_table(str(locale_path)):
             source_entries[key] = key
     if not source_entries:
-        raise SystemExit(f"No translatable template keys found in {locale_dir}.")
+        raise SystemExit(tt(f"No translatable template keys found in {locale_dir}."))
 
     model = args.model or os.environ.get("TT_MODEL") or os.environ.get("OPENAI_MODEL")
     if not model:
-        raise SystemExit("Missing model. Pass --model or set TT_MODEL/OPENAI_MODEL.")
+        raise SystemExit(
+            tt("Missing model. Pass --model or set TT_MODEL/OPENAI_MODEL.")
+        )
 
     api_key = (
         args.api_key or os.environ.get("TT_API_KEY") or os.environ.get("OPENAI_API_KEY")
     )
     if not api_key:
         raise SystemExit(
-            "Missing API key. Pass --api-key or set TT_API_KEY/OPENAI_API_KEY."
+            tt("Missing API key. Pass --api-key or set TT_API_KEY/OPENAI_API_KEY.")
         )
 
     base_url = (
@@ -282,7 +285,9 @@ def handle_translate_command(args: argparse.Namespace) -> int:
 
     if not pending_by_locale:
         print(
-            f"Updated {len(target_locales)} locale file(s), translated 0 entry/entries."
+            tt(
+                f"Updated {len(target_locales)} locale file(s), translated 0 entry/entries."
+            )
         )
         return 0
 
@@ -311,7 +316,9 @@ def handle_translate_command(args: argparse.Namespace) -> int:
             )
 
     print(
-        f"Updated {len(target_locales)} locale file(s), translated {total_translated} entry/entries."
+        tt(
+            f"Updated {len(target_locales)} locale file(s), translated {total_translated} entry/entries."
+        )
     )
     return 0
 

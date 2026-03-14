@@ -13,6 +13,7 @@ from .common import (
     resolve_locale_dir_from_source,
     should_recurse_into_directory,
 )
+from .i18n import tt
 
 TT_EXTRACTION_METHOD = "autolang.cli.extractors:extract_tt_python"
 TT_EXTRACTION_KEYWORDS = {"tt": None}
@@ -29,9 +30,11 @@ def handle_sync_command(args: argparse.Namespace) -> int:
 
     if not locale_files:
         raise SystemExit(
-            f"No locale TOML files found in {locale_dir}. "
-            f"Run `tt init --source {source_path} --locale-dir {locale_dir} "
-            f"--locales <locale>...` first."
+            tt(
+                f"No locale TOML files found in {locale_dir}. "
+                f"Run `tt init --source {source_path} --locale-dir {locale_dir} "
+                f"--locales <locale>...` first."
+            )
         )
 
     total_added_entries = 0
@@ -63,21 +66,23 @@ def handle_sync_command(args: argparse.Namespace) -> int:
                 cue_path.unlink()
 
     print(
-        f"Scanned {scanned_files} Python file(s), synced {len(locale_files)} locale file(s), "
-        f"tracked {len(unique_messages)} template(s), added {total_added_entries} missing entry/entries, "
-        f"removed {total_removed_entries} stale entry/entries."
+        tt(
+            f"Scanned {scanned_files} Python file(s), synced {len(locale_files)} locale file(s), "
+            f"tracked {len(unique_messages)} template(s), added {total_added_entries} missing entry/entries, "
+            f"removed {total_removed_entries} stale entry/entries."
+        )
     )
     return 0
 
 
 def collect_source_templates(source_path: Path) -> tuple[dict[str, str], int, set[Path]]:
     if not source_path.exists():
-        raise SystemExit(f"Source path not found: {source_path}")
+        raise SystemExit(tt(f"Source path not found: {source_path}"))
 
     if source_path.is_file():
         if source_path.suffix != ".py":
             raise SystemExit(
-                f"Source path must be a Python file or directory: {source_path}"
+                tt(f"Source path must be a Python file or directory: {source_path}")
             )
         return extract_templates_from_file(source_path), 1, {source_path.resolve()}
 
