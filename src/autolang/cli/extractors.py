@@ -31,14 +31,14 @@ class _TTCallExtractor(ast.NodeVisitor):
 
 
 def extract_tt_python(
-    fileobj,
+    file_obj,
     keywords: Collection[str],
     comment_tags: Collection[str],
     options: Mapping[str, Any],
 ) -> Generator[tuple[int, str, str, list[str]], None, None]:
     del comment_tags
 
-    source = _read_python_source(fileobj, options)
+    source = _read_python_source(file_obj, options)
     if source is None:
         return
 

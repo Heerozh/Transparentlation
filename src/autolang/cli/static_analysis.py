@@ -129,14 +129,16 @@ class StaticCueAnalyzer(ast.NodeVisitor):
             kind="augmented_assignment",
         )
 
-    def visit_For(self, node: ast.For) -> None:
+    def visit_For(self, node: ast.For | ast.AsyncFor) -> None:
         self.visit(node.iter)
+        is_async = isinstance(node, ast.AsyncFor)
+        prefix = "async for" if is_async else "for"
         self._record_targets(
             node.target,
             node.lineno,
             ast.unparse(node.iter),
             override_source=(
-                f"for {ast.unparse(node.target)} in {ast.unparse(node.iter)}"
+                f"{prefix} {ast.unparse(node.target)} in {ast.unparse(node.iter)}"
             ),
             kind="loop_target",
         )
@@ -146,7 +148,9 @@ class StaticCueAnalyzer(ast.NodeVisitor):
     def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
         self.visit_For(node)
 
-    def visit_With(self, node: ast.With) -> None:
+    def visit_With(self, node: ast.With | ast.AsyncWith) -> None:
+        is_async = isinstance(node, ast.AsyncWith)
+        prefix = "async with" if is_async else "with"
         for item in node.items:
             self.visit(item.context_expr)
             if item.optional_vars is not None:
@@ -155,7 +159,7 @@ class StaticCueAnalyzer(ast.NodeVisitor):
                     node.lineno,
                     ast.unparse(item.context_expr),
                     override_source=(
-                        f"with {ast.unparse(item.context_expr)} "
+                        f"{prefix} {ast.unparse(item.context_expr)} "
                         f"as {ast.unparse(item.optional_vars)}"
                     ),
                     kind="with_alias",
