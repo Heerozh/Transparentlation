@@ -1,5 +1,4 @@
 import pytest
-import timeit
 import inspect
 import sys
 import os
@@ -15,7 +14,7 @@ from autolang import install
 def setup_translator():
     # Setup dummy localized translator with empty translation
     # Which forces it to just evaluate the original text quickly
-    return install("en", "dummy_path_does_not_exist")
+    return install("dummy_path_does_not_exist", "en")
 
 
 def test_hot_path_performance_guarantee(benchmark, setup_translator):

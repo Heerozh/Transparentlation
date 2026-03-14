@@ -27,7 +27,9 @@ def handle_sync_command(args: argparse.Namespace) -> int:
 
     if not locale_files:
         raise SystemExit(
-            f"No locale TOML files found in {locale_dir}. Run `tt init --source {source_path} --locale-dir {locale_dir} --locales <locale>...` first."
+            f"No locale TOML files found in {locale_dir}. "
+            f"Run `tt init --source {source_path} --locale-dir {locale_dir} "
+            f"--locales <locale>...` first."
         )
 
     total_added_entries = 0
@@ -49,7 +51,9 @@ def handle_sync_command(args: argparse.Namespace) -> int:
     if not args.dry_run:
         for locale_path, synced_entries in synced_locale_entries.items():
             write_string_table(str(locale_path), synced_entries)
-            write_string_table(str(build_source_cue_path(locale_dir, locale_path.stem)), extracted_cues)
+            write_string_table(
+                str(build_source_cue_path(locale_dir, locale_path.stem)), extracted_cues
+            )
         cue_dir = locale_dir.parent / f".{locale_dir.name}_cue"
         active_cue_names = {f"{locale_path.stem}.toml" for locale_path in locale_files}
         for cue_path in sorted(cue_dir.glob("*.toml")):
@@ -70,7 +74,9 @@ def collect_source_templates(source_path: Path) -> tuple[dict[str, str], int]:
 
     if source_path.is_file():
         if source_path.suffix != ".py":
-            raise SystemExit(f"Source path must be a Python file or directory: {source_path}")
+            raise SystemExit(
+                f"Source path must be a Python file or directory: {source_path}"
+            )
         return extract_templates_from_file(source_path), 1
 
     scanned_files: set[str] = set()
@@ -90,10 +96,10 @@ def collect_source_templates(source_path: Path) -> tuple[dict[str, str], int]:
 
 
 def extract_templates_from_file(source_path: Path) -> dict[str, str]:
-    with source_path.open("rb") as fileobj:
+    with source_path.open("rb") as file_obj:
         extracted = extract(
             TT_EXTRACTION_METHOD,
-            fileobj,
+            file_obj,
             keywords=TT_EXTRACTION_KEYWORDS,
             options={"filename": str(source_path)},
         )

@@ -18,7 +18,7 @@ fmt = Format(Locale.parse("en"))
 @pytest.fixture(autouse=True)
 def setup_translator():
     test_locales_dir = os.path.join(os.path.dirname(__file__), "locales")
-    return install("es", test_locales_dir)
+    return install(test_locales_dir, "es")
 
 
 def test_basic_translation(setup_translator):
@@ -29,7 +29,7 @@ def test_basic_translation(setup_translator):
 
 def test_fallback_untranslated(setup_translator):
     # Cold start should fallback to original string if not in TOML
-    result = setup_translator.translate(f"Untranslated string")
+    result = setup_translator.translate("Untranslated string")
     assert result == "Untranslated string"
 
 

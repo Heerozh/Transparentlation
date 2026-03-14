@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import locale
 import os
 from dataclasses import dataclass
 from types import CodeType, FrameType
@@ -9,10 +10,29 @@ from typing import Any
 
 import executing
 from babel import Locale
+from babel.core import UnknownLocaleError
 from babel.support import Format
 
 from .source_templates import extract_template_from_call
 from .toml_io import load_string_table
+
+
+_ENGLISH_LOCALE = Locale.parse("en")
+_LANGUAGE_NAME_TO_CODE = {
+    " ".join(name.casefold().split()): code
+    for code, name in _ENGLISH_LOCALE.languages.items()
+    if isinstance(name, str)
+}
+_SCRIPT_NAME_TO_CODE = {
+    " ".join(name.casefold().split()): code
+    for code, name in _ENGLISH_LOCALE.scripts.items()
+    if isinstance(name, str)
+}
+_TERRITORY_NAME_TO_CODE = {
+    " ".join(name.casefold().split()): code
+    for code, name in _ENGLISH_LOCALE.territories.items()
+    if isinstance(name, str)
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,8 +153,81 @@ class TransparentTranslator:
 
 
 def install(
-    locale_str: str,
     locale_dir: str = "locales",
+    locale_str: str | None = None,
 ) -> TransparentTranslator:
     """Create a translator instance without mutating the module-level default translator."""
-    return TransparentTranslator(locale_str, locale_dir)
+    return TransparentTranslator(
+        _parse_locale_str(locale_str) or _detect_system_locale(),
+        locale_dir,
+    )
+
+
+def _parse_locale_str(locale_str: str | None) -> str | None:
+    if not locale_str:
+        return None
+
+    for separator in (None, "-"):
+        try:
+            if separator is None:
+                return str(Locale.parse(locale_str))
+            return str(Locale.parse(locale_str, sep=separator))
+        except (ValueError, UnknownLocaleError):
+            continue
+
+    return _parse_windows_locale_display_name(locale_str)
+
+
+def _parse_windows_locale_display_name(locale_str: str) -> str | None:
+    locale_name = locale_str.split(".", 1)[0].partition("@")[0]
+    if "_" not in locale_name and " (" not in locale_name:
+        return None
+
+    language_part, _separator, territory_part = locale_name.partition("_")
+    script_part: str | None = None
+
+    if language_part.endswith(")") and " (" in language_part:
+        split_at = language_part.rfind(" (")
+        script_part = language_part[split_at + 2 : -1]
+        language_part = language_part[:split_at]
+
+    language_code = _LANGUAGE_NAME_TO_CODE.get(_normalize_locale_name_part(language_part))
+    if language_code is None:
+        return None
+
+    script_code = None
+    if script_part:
+        script_code = _SCRIPT_NAME_TO_CODE.get(_normalize_locale_name_part(script_part))
+
+    territory_code = None
+    if territory_part:
+        territory_code = _TERRITORY_NAME_TO_CODE.get(
+            _normalize_locale_name_part(territory_part)
+        )
+
+    try:
+        return str(
+            Locale(language_code, territory=territory_code, script=script_code)
+        )
+    except (ValueError, UnknownLocaleError):
+        return language_code
+
+
+def _normalize_locale_name_part(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def _detect_system_locale() -> str:
+    locale_name, _encoding = locale.getlocale()
+    for candidate in (
+        locale_name,
+        os.environ.get("LC_ALL"),
+        os.environ.get("LC_MESSAGES"),
+        os.environ.get("LANG"),
+        os.environ.get("LANGUAGE"),
+    ):
+        parsed = _parse_locale_str(candidate)
+        if parsed is not None:
+            return parsed
+
+    return "en"

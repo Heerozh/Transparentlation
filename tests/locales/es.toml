@@ -1,0 +1,3 @@
+"Hello {name}" = "Hola {name}"
+"Account balance: {fmt.currency(balance, 'USD')}" = "Saldo de la cuenta: {fmt.currency(balance, 'USD')}"
+"Today is {fmt.date(now, format='short')}" = "Hoy es {fmt.date(now, format='short')}"
