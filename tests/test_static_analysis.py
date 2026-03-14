@@ -206,3 +206,48 @@ def test_starred_unpack_preserves_numeric_annotation_for_trailing_target():
     cue_text = _extract_cue_text(source)
     assert "annotation: int" in cue_text.lower(), cue_text
     assert "numeric" in cue_text.lower() or "number" in cue_text.lower(), cue_text
+
+
+def test_for_loop_target_records_definition_source():
+    source = (
+        "from autolang import tt\n"
+        "items = ['a']\n"
+        "for item in items:\n"
+        "    tt(f'{item}')\n"
+    )
+    cue_text = _extract_cue_text(source)
+    assert "definition: for item in items" in cue_text.lower(), cue_text
+
+
+def test_with_alias_records_definition_source():
+    source = (
+        "from autolang import tt\n"
+        "path = 'demo.txt'\n"
+        "with open(path) as handle:\n"
+        "    tt(f'{handle}')\n"
+    )
+    cue_text = _extract_cue_text(source)
+    assert "definition: with open(path) as handle" in cue_text.lower(), cue_text
+
+
+def test_except_alias_records_definition_source():
+    source = (
+        "from autolang import tt\n"
+        "try:\n"
+        "    raise ValueError('boom')\n"
+        "except ValueError as exc:\n"
+        "    tt(f'{exc}')\n"
+    )
+    cue_text = _extract_cue_text(source)
+    assert "definition: except valueerror as exc" in cue_text.lower(), cue_text
+
+
+def test_augmented_assignment_records_definition_source():
+    source = (
+        "from autolang import tt\n"
+        "count = 1\n"
+        "count += 2\n"
+        "tt(f'{count}')\n"
+    )
+    cue_text = _extract_cue_text(source)
+    assert "definition: count += 2" in cue_text.lower(), cue_text

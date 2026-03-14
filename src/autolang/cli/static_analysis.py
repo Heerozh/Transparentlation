@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ast
-from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from ..source_templates import extract_template_from_call, render_formatted_value
@@ -10,7 +10,6 @@ from .pyright_lsp import infer_type
 
 @dataclass(frozen=True, slots=True)
 class DefinitionRecord:
-    kind: str
     line: int
     source: str
     annotation: str | None = None
@@ -38,17 +37,15 @@ class StaticTemplateCue:
 @dataclass(slots=True)
 class _Scope:
     parent: "_Scope | None" = None
-    definitions: dict[str, list[DefinitionRecord]] = field(
-        default_factory=lambda: defaultdict(list)
-    )
+    definitions: dict[str, DefinitionRecord] = field(default_factory=dict)
 
     def add_definition(self, name: str, record: DefinitionRecord) -> None:
-        self.definitions[name].append(record)
+        self.definitions[name] = record
 
     def lookup(self, name: str) -> DefinitionRecord | None:
-        records = self.definitions.get(name)
-        if records:
-            return records[-1]
+        record = self.definitions.get(name)
+        if record is not None:
+            return record
         if self.parent is not None:
             return self.parent.lookup(name)
         return None
@@ -62,43 +59,29 @@ class StaticCueAnalyzer(ast.NodeVisitor):
         self._source = source
         self._source_lines = source.splitlines(keepends=True)
 
-    def visit_Module(self, node: ast.Module) -> None:
-        self._visit_block(node.body)
-
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self._scope.add_definition(
-            node.name,
-            DefinitionRecord(
-                kind="function", line=node.lineno, source=f"def {node.name}(...):"
-            ),
-        )
-        self._visit_function(node.args, node.body)
+        with self._child_scope():
+            self._record_parameters(node.args)
+            self._visit_statements(node.body)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        self._scope.add_definition(
-            node.name,
-            DefinitionRecord(
-                kind="async_function",
-                line=node.lineno,
-                source=f"async def {node.name}(...):",
-            ),
-        )
-        self._visit_function(node.args, node.body)
+        with self._child_scope():
+            self._record_parameters(node.args)
+            self._visit_statements(node.body)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        self._scope.add_definition(
-            node.name,
-            DefinitionRecord(
-                kind="class", line=node.lineno, source=f"class {node.name}:"
-            ),
-        )
-        self._with_child_scope(node.body)
+        with self._child_scope():
+            self._visit_statements(node.body)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
         value_source = ast.unparse(node.value)
         for target in node.targets:
-            self._record_targets(target, node.lineno, value_source)
+            self._record_binding(
+                target,
+                line=node.lineno,
+                source=f"{ast.unparse(target)} = {value_source}",
+            )
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if node.value is not None:
@@ -112,42 +95,33 @@ class StaticCueAnalyzer(ast.NodeVisitor):
         source = f"{target_source}: {annotation}"
         if value_source is not None:
             source = f"{source} = {value_source}"
-        self._record_targets(
+        self._record_binding(
             node.target,
-            node.lineno,
-            value_source,
+            line=node.lineno,
+            source=source,
             annotation=annotation,
-            override_source=source,
-            kind="annotated_assignment",
         )
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
         self.visit(node.value)
         symbol = _AUGASSIGN_SYMBOLS.get(type(node.op), "")
-        source = f"{ast.unparse(node.target)} {symbol}= {ast.unparse(node.value)}"
-        self._record_targets(
+        self._record_binding(
             node.target,
-            node.lineno,
-            ast.unparse(node.value),
-            override_source=source,
-            kind="augmented_assignment",
+            line=node.lineno,
+            source=f"{ast.unparse(node.target)} {symbol}= {ast.unparse(node.value)}",
         )
 
     def visit_For(self, node: ast.For | ast.AsyncFor) -> None:
         self.visit(node.iter)
         is_async = isinstance(node, ast.AsyncFor)
         prefix = "async for" if is_async else "for"
-        self._record_targets(
+        self._record_binding(
             node.target,
-            node.lineno,
-            ast.unparse(node.iter),
-            override_source=(
-                f"{prefix} {ast.unparse(node.target)} in {ast.unparse(node.iter)}"
-            ),
-            kind="loop_target",
+            line=node.lineno,
+            source=f"{prefix} {ast.unparse(node.target)} in {ast.unparse(node.iter)}",
         )
-        self._visit_block(node.body)
-        self._with_child_scope(node.orelse)
+        self._visit_statements(node.body)
+        self._visit_statements(node.orelse)
 
     def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
         self.visit_For(node)
@@ -158,51 +132,31 @@ class StaticCueAnalyzer(ast.NodeVisitor):
         for item in node.items:
             self.visit(item.context_expr)
             if item.optional_vars is not None:
-                self._record_targets(
+                self._record_binding(
                     item.optional_vars,
-                    node.lineno,
-                    ast.unparse(item.context_expr),
-                    override_source=(
+                    line=node.lineno,
+                    source=(
                         f"{prefix} {ast.unparse(item.context_expr)} "
                         f"as {ast.unparse(item.optional_vars)}"
                     ),
-                    kind="with_alias",
                 )
-        self._visit_block(node.body)
+        self._visit_statements(node.body)
 
     def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
         self.visit_With(node)
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
-        child_scope = _Scope(parent=self._scope)
-        previous_scope = self._scope
-        self._scope = child_scope
-        if node.name:
-            exception_type = (
-                ast.unparse(node.type) if node.type is not None else "Exception"
-            )
-            self._scope.add_definition(
-                node.name,
-                DefinitionRecord(
-                    kind="exception_alias",
+        with self._child_scope():
+            if node.name:
+                exception_type = (
+                    ast.unparse(node.type) if node.type is not None else "Exception"
+                )
+                self._record_name(
+                    node.name,
                     line=node.lineno,
                     source=f"except {exception_type} as {node.name}",
-                ),
-            )
-        self._visit_block(node.body)
-        self._scope = previous_scope
-
-    def visit_If(self, node: ast.If) -> None:
-        self.visit(node.test)
-        self._with_child_scope(node.body)
-        self._with_child_scope(node.orelse)
-
-    def visit_Try(self, node: ast.Try) -> None:
-        self._with_child_scope(node.body)
-        for handler in node.handlers:
-            self.visit(handler)
-        self._with_child_scope(node.orelse)
-        self._with_child_scope(node.finalbody)
+                )
+            self._visit_statements(node.body)
 
     def visit_Call(self, node: ast.Call) -> None:
         template, _variables = extract_template_from_call(node)
@@ -220,22 +174,16 @@ class StaticCueAnalyzer(ast.NodeVisitor):
             )
         self.generic_visit(node)
 
-    def _visit_function(self, args: ast.arguments, body: list[ast.stmt]) -> None:
-        child_scope = _Scope(parent=self._scope)
-        previous_scope = self._scope
-        self._scope = child_scope
+    def _record_parameters(self, args: ast.arguments) -> None:
         for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs]:
             annotation = (
                 ast.unparse(arg.annotation) if arg.annotation is not None else None
             )
-            self._scope.add_definition(
+            self._record_name(
                 arg.arg,
-                DefinitionRecord(
-                    kind="parameter",
-                    line=arg.lineno,
-                    source=_format_parameter_source(arg.arg, annotation),
-                    annotation=annotation,
-                ),
+                line=arg.lineno,
+                source=_format_parameter_source(arg.arg, annotation),
+                annotation=annotation,
             )
         if args.vararg is not None:
             annotation = (
@@ -243,14 +191,11 @@ class StaticCueAnalyzer(ast.NodeVisitor):
                 if args.vararg.annotation is not None
                 else None
             )
-            self._scope.add_definition(
+            self._record_name(
                 args.vararg.arg,
-                DefinitionRecord(
-                    kind="vararg",
-                    line=args.vararg.lineno,
-                    source=_format_parameter_source(f"*{args.vararg.arg}", annotation),
-                    annotation=annotation,
-                ),
+                line=args.vararg.lineno,
+                source=_format_parameter_source(f"*{args.vararg.arg}", annotation),
+                annotation=annotation,
             )
         if args.kwarg is not None:
             annotation = (
@@ -258,55 +203,49 @@ class StaticCueAnalyzer(ast.NodeVisitor):
                 if args.kwarg.annotation is not None
                 else None
             )
-            self._scope.add_definition(
+            self._record_name(
                 args.kwarg.arg,
-                DefinitionRecord(
-                    kind="kwarg",
-                    line=args.kwarg.lineno,
-                    source=_format_parameter_source(f"**{args.kwarg.arg}", annotation),
-                    annotation=annotation,
-                ),
+                line=args.kwarg.lineno,
+                source=_format_parameter_source(f"**{args.kwarg.arg}", annotation),
+                annotation=annotation,
             )
-        self._visit_block(body)
-        self._scope = previous_scope
 
-    def _with_child_scope(self, body: list[ast.stmt]) -> None:
-        child_scope = _Scope(parent=self._scope)
-        previous_scope = self._scope
-        self._scope = child_scope
-        self._visit_block(body)
-        self._scope = previous_scope
-
-    def _visit_block(self, body: list[ast.stmt]) -> None:
+    def _visit_statements(self, body: list[ast.stmt]) -> None:
         for statement in body:
             self.visit(statement)
 
-    def _record_targets(
+    @contextmanager
+    def _child_scope(self):
+        previous_scope = self._scope
+        self._scope = _Scope(parent=self._scope)
+        try:
+            yield
+        finally:
+            self._scope = previous_scope
+
+    def _record_binding(
         self,
         target: ast.AST,
-        line: int,
-        value_source: str | None,
         *,
+        line: int,
+        source: str,
         annotation: str | None = None,
-        override_source: str | None = None,
-        kind: str = "assignment",
     ) -> None:
-        source = override_source
-        if source is None:
-            target_source = ast.unparse(target)
-            source = (
-                f"{target_source} = {value_source}"
-                if value_source is not None
-                else target_source
-            )
-
         for name in _extract_target_names(target):
-            self._scope.add_definition(
-                name,
-                DefinitionRecord(
-                    kind=kind, line=line, source=source, annotation=annotation
-                ),
-            )
+            self._record_name(name, line=line, source=source, annotation=annotation)
+
+    def _record_name(
+        self,
+        name: str,
+        *,
+        line: int,
+        source: str,
+        annotation: str | None = None,
+    ) -> None:
+        self._scope.add_definition(
+            name,
+            DefinitionRecord(line=line, source=source, annotation=annotation),
+        )
 
     def _build_template_cue(self, node: ast.Call, template: str) -> str:
         location = (
